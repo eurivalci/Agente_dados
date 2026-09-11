@@ -231,6 +231,34 @@ button { cursor: pointer; }
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
   padding: 9px 11px; color: var(--text-secondary); line-height: 1.5;
 }
+.sec-tit {
+  font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 650; margin: 16px 0 7px;
+}
+.ficha {
+  display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px;
+  margin: 0; font-size: 12.5px;
+}
+.ficha dt { color: var(--text-muted); }
+.ficha dd { margin: 0; color: var(--text-secondary); }
+.atalho-fonte {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  font-size: 12.5px; color: var(--text-secondary); line-height: 1.6;
+  border-left: 2px solid var(--series-1); padding: 6px 0 6px 10px; margin: 10px 0;
+}
+.res-chamada {
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  background: var(--surface-1); margin-top: 4px;
+}
+.res-cab { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.marca {
+  font-size: 11px; font-family: var(--mono); padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap;
+}
+.marca.ok   { border-color: rgba(12,163,12,.5); color: var(--good); }
+.marca.ruim { border-color: rgba(208,59,59,.5); color: var(--critical); }
+.passos { margin: 9px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.65; }
+.passos li { margin-bottom: 3px; }
 
 /* personalização do cartão: título, forma, altura, posição */
 .card { position: relative; }
@@ -3319,7 +3347,85 @@ const GRANS = {
   instituicao:"Instituição", variavel:"Série/variável",
   endereco:"Endereço", catalogo:"Catálogo"
 };
-  AG.fontes = { AUDIT_DATE, FONTES, RECEITAS, DOMINIOS, ACESSOS, GRANS };
+/* ============================================================
+   RECEITAS DE ARQUIVO — CAMADA FINANCEIRA
+   Nenhuma API financeira brasileira responde ao navegador: BCB, Tesouro e
+   CKAN negam CORS (auditado em 05/09/2026), a brapi pede token que não deve
+   viver em código de navegador, e o Google Finance não tem API pública.
+   Então o caminho honesto para dado financeiro é o arquivo — e o que falta a
+   quem vai baixar não é vontade, é saber ONDE e QUAL arquivo.
+
+   Cada receita traz o portal (endereço estável do órgão) e o passo a passo.
+   O link profundo do arquivo do dia NÃO é prometido: esses portais trocam
+   caminho de arquivo com frequência, e link morto na tela é pior que uma
+   instrução que continua valendo.
+   ============================================================ */
+const RECEITAS_ARQUIVO = [
+  { id:"fa-ipca", titulo:"IPCA mensal para deflacionar suas séries",
+    org:"Banco Central — SGS", dom:"fiscal", usa:"finreal",
+    portal:"https://www3.bcb.gov.br/sgspub/",
+    desc:"A série 433 é a variação mensal do IPCA em %. O agente encadeia essa variação em número índice sozinho — basta a coluna estar na mesma base, com as mesmas datas.",
+    passos:[
+      "No SGS, pesquise o código 433 (IPCA — variação mensal) e marque a série.",
+      "Escolha o período, clique em Consultar e use o botão de download em CSV.",
+      "O arquivo vem com ; como separador e vírgula decimal — o formato que o agente já lê.",
+      "Junte a coluna à sua base de receita ou despesa e pergunte: \"receita em valores reais\"."],
+    alternativa:"Também servem a 189 (IGP-M) e a 188 (INPC). Para o Sharpe, use a 4389 (CDI ao ano) e informe o valor na própria pergunta: \"sharpe com cdi de 11%\"." },
+
+  { id:"fa-b3", titulo:"Cotações históricas da B3",
+    org:"B3", dom:"setorial", usa:"finrisco",
+    portal:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
+    desc:"Série histórica anual de todos os papéis. É arquivo de largura fixa, não CSV: precisa de um passo de conversão antes de entrar aqui.",
+    passos:[
+      "Baixe o arquivo COTAHIST do ano desejado na página de séries históricas.",
+      "O layout é posicional; converta para CSV mantendo data, código do papel e preço de fechamento.",
+      "Traga o CSV e pergunte \"retorno e risco do fechamento\".",
+      "Para beta, deixe o índice como segunda coluna na mesma base, com as mesmas datas."],
+    alternativa:"Se você acompanha poucos ativos, exportar o histórico da própria corretora costuma ser mais rápido e já vem em CSV." },
+
+  { id:"fa-cvm-dfp", titulo:"Demonstrações financeiras de companhias abertas",
+    org:"CVM — Dados Abertos", dom:"setorial", usa:"finindic",
+    portal:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
+    desc:"DFP (anual) e ITR (trimestral) de todas as companhias abertas: balanço patrimonial e demonstração de resultado, em CSV dentro de um ZIP por ano.",
+    passos:[
+      "Baixe o ZIP do ano no portal de dados abertos da CVM.",
+      "Dentro dele, os arquivos BPA (ativo), BPP (passivo) e DRE são os que interessam.",
+      "Filtre pelo CNPJ ou pela denominação antes de trazer — o arquivo cobre o mercado inteiro.",
+      "Com as contas em colunas, pergunte \"indicadores contábeis margem e liquidez\"."],
+    alternativa:"A CVM publica no mesmo padrão os informes diários de fundos (dataset fi-doc-inf_diario), que servem para retorno e risco de cota." },
+
+  { id:"fa-tesouro-direto", titulo:"Preços e taxas do Tesouro Direto",
+    org:"Tesouro Transparente", dom:"fiscal", usa:"finrisco",
+    portal:"https://www.tesourotransparente.gov.br/publicacoes/preco-e-taxa-dos-titulos-publicos/",
+    desc:"Série diária de preço e taxa de cada título público, desde 2002. Referência de renda fixa para comparar com qualquer carteira.",
+    passos:[
+      "Baixe o CSV de preços e taxas na página de publicações.",
+      "Filtre um título e um vencimento — o arquivo traz todos empilhados.",
+      "Traga para o agente e pergunte \"retorno e risco do preço\"."],
+    alternativa:"A API CKAN do mesmo portal existe, mas nega CORS: pelo navegador, é download." },
+
+  { id:"fa-rreo", titulo:"RREO e RGF do seu município",
+    org:"Tesouro Nacional — SICONFI", dom:"fiscal", usa:"finlrf",
+    portal:"https://siconfi.tesouro.gov.br/siconfi/pages/public/consulta_finbra/finbra_list.jsf",
+    desc:"Receita Corrente Líquida, despesa com pessoal e dívida consolidada — as três contas de que o agente precisa para calcular os limites da LRF.",
+    passos:[
+      "No SICONFI, escolha RREO (execução orçamentária) ou RGF (gestão fiscal) e o ente.",
+      "Baixe em CSV o anexo que traz a RCL e a despesa com pessoal.",
+      "Confira se a RCL está apurada em 12 meses — é a definição do art. 2º, IV, e muda todo o percentual.",
+      "Traga o arquivo e pergunte \"limite de gastos com pessoal pela LRF\"."],
+    alternativa:"A API do SICONFI responde ao navegador e já está no catálogo — mas os endpoints de RREO/RGF exigem exercício, período e código do ente." },
+
+  { id:"fa-corretora", titulo:"O extrato da sua própria corretora",
+    org:"Sua corretora", dom:"setorial", usa:"finrisco", portal:"",
+    desc:"O caminho mais curto para analisar a carteira que é sua de verdade: quase toda corretora exporta posição e histórico em CSV ou XLSX.",
+    passos:[
+      "Exporte o histórico de posição, não só as notas de corretagem: precisa de data e valor.",
+      "Uma linha por data por ativo é o formato ideal; o agente detecta a frequência sozinho.",
+      "Pergunte \"retorno e risco da carteira\" e, se tiver o índice junto, \"beta em relação ao índice\"."],
+    alternativa:"Sem histórico exportável, uma planilha com data e valor total da carteira já responde retorno, volatilidade e drawdown." }
+];
+
+  AG.fontes = { AUDIT_DATE, FONTES, RECEITAS, RECEITAS_ARQUIVO, DOMINIOS, ACESSOS, GRANS };
 })();
 
 
@@ -4037,6 +4143,13 @@ const GRANS = {
     { intent: 'lifecycle', re: /(ciclo de vida|dormentes?|churn|clientes? (perdidos?|inativos?)|fornecedores? (perdidos?|inativos?)|ativos e inativos)/ },
     { intent: 'geo', re: /(mapa(?! de calor)|geografic|onde estao|localizacao|coordenadas|latitude|dispersao no mapa)/ },
     { intent: 'boxplot', re: /(boxplot|box plot|caixa e bigode|dispersao por|distribuicao comparada|amplitude por)/ },
+    /* --- camada financeira: antes das regras genéricas, porque "risco",
+       "retorno" e "real" também aparecem em frases de ranking comum --- */
+    { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada|capacidade de pagamento|\bcapag\b)/ },
+    { intent: 'finreal', re: /(deflacion|valores? reais|em termos reais|descontada a inflacao|corrigid[oa] pel[oa] (ipca|igp|inpc|inflacao)|a precos de|poder de compra|real vs nominal|nominal vs real|inflacao acumulada|serie real)/ },
+    { intent: 'finbeta', re: /(\bbeta\b|correlacao com o (indice|ibovespa|benchmark|mercado)|acompanha o (indice|ibovespa|mercado)|em relacao ao (indice|benchmark|ibovespa)|contra o (indice|benchmark|ibovespa|cdi)|versus o (indice|benchmark|ibovespa))/ },
+    { intent: 'finindic', re: /(margem (bruta|liquida|operacional|ebitda)|liquidez (corrente|seca|imediata)|indicadores? (contabeis|financeiros|fundamentalistas)|\broe\b|\broa\b|alavancagem|divida liquida|ebitda|fundamentos da empresa|analise fundamentalista)/ },
+    { intent: 'finrisco', re: /(retorno e risco|risco e retorno|analise (de risco|financeira|de carteira)|volatilidade|\bsharpe\b|\bsortino\b|drawdown|perda maxima|maior queda|value at risk|risco d[aeo]s? |rentabilidade|retorno (acumulado|do periodo|anualizado)|\bcagr\b|desempenho d[ao] (ativo|carteira|fundo|acao|cota))/ },
     { intent: 'indexed', re: /(base 100|indexad|indice base|comparar (series|evolucao)|mesmo ponto de partida)/ },
     { intent: 'segment', re: /(segmentar|segmentacao automatica|cluster|k-?means|agrupar automaticamente|perfis naturais|grupos naturais)/ },
     { intent: 'forecast', re: /(projec|proje[cç]|previs|prever|forecast|tendencia futura|proximos? (\d+ )?(meses|anos|semanas|dias)|quanto vamos|estimativa futura|cenario)/ },
@@ -4076,7 +4189,10 @@ const GRANS = {
   /* intenções que se sustentam só com a fonte, sem casar termo nenhum */
   const SELF_SUFFICIENT = { overview: 1, quality: 1, stats: 1, total: 1, detail: 1, histogram: 1,
     outlier: 1, audit: 1, benford: 1, splitting: 1, roundness: 1, documents: 1, dedupe: 1, drivers: 1,
-    scatter: 1, multimeasure: 1 };
+    scatter: 1, multimeasure: 1,
+    /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
+       para "qual a volatilidade disso" seria inventar exigência */
+    finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1 };
   /* intenções que sem uma dimensão não têm o que mostrar */
   const NEEDS_DIM = { ranking: 1, distribution: 1, crosstab: 1, pivot: 1, abc: 1, compare: 1,
     movers: 1, contribution: 1, boxplot: 1, indexed: 1, scan: 1, multigroup: 1 };
@@ -8965,6 +9081,411 @@ const GRANS = {
 })();
 
 
+/* ==== 73-financeiro.js ==== */
+/* ============================================================
+   73 — CAMADA FINANCEIRA
+   O motor sabe somar, agrupar e detectar quebra de patamar. O que ele não
+   sabia é o que separa uma série de preços de uma decisão: retorno, risco,
+   perda máxima, prêmio por unidade de risco, e quanto disso é só inflação.
+
+   Três regras que valem para tudo aqui:
+
+   1. A FREQUÊNCIA É MEDIDA, NUNCA SUPOSTA. Anualizar volatilidade diária com
+      √12 dá um número plausível e errado. A frequência sai do espaçamento
+      mediano entre as datas — e quando a série é irregular demais, o cálculo
+      que depende dela é recusado, não estimado no chute.
+   2. RETORNO COMPOSTO NÃO SOMA. Acumulado é produto de (1+r), nunca soma;
+      CAGR é geométrico. Somar retornos percentuais é o erro mais comum e o
+      mais difícil de perceber, porque o número sai perto do certo.
+   3. NOMINAL NÃO SE COMPARA COM NOMINAL AO LONGO DO TEMPO. Toda série longa
+      tem a opção de ser deflacionada; a comparação bruta entre 2015 e 2025
+      é uma conclusão sobre inflação disfarçada de conclusão sobre gestão.
+   ============================================================ */
+
+(function () {
+  const S = AG.stats;
+  const DIA = 86400000;
+
+  /* O motor guarda datas como TIMESTAMP, não como objeto Date. Toda esta
+     camada trabalha em milissegundos e converte na fronteira — assim um
+     `Date` vindo de teste ou de outro módulo continua valendo. */
+  const ms = (d) => (d instanceof Date ? d.getTime() : d);
+  const ehData = (d) => (d instanceof Date ? isFinite(d.getTime()) : (typeof d === 'number' && isFinite(d)));
+
+  /* =========================================================
+     FREQUÊNCIA DA SÉRIE
+     ========================================================= */
+  /** Períodos por ano a partir do espaçamento mediano entre observações. */
+  function frequencia(datas) {
+    const ts = datas.filter(ehData).map(ms).sort((a, b) => a - b);
+    if (ts.length < 3) return null;
+    const gaps = [];
+    for (let i = 1; i < ts.length; i++) { const g = ts[i] - ts[i - 1]; if (g > 0) gaps.push(g); }
+    if (!gaps.length) return null;
+    const med = S.quantile(gaps, 0.5) / DIA;
+    // dispersão dos intervalos: série muito irregular não tem frequência
+    const q1 = S.quantile(gaps, 0.25) / DIA, q3 = S.quantile(gaps, 0.75) / DIA;
+    const irregular = med > 0 && (q3 - q1) / med > 1.5;
+
+    let ppa, rot;
+    if (med <= 1.6) { ppa = 252; rot = 'diária (dias úteis)'; }
+    else if (med <= 4) { ppa = 252; rot = 'diária'; }
+    else if (med <= 10) { ppa = 52; rot = 'semanal'; }
+    else if (med <= 20) { ppa = 26; rot = 'quinzenal'; }
+    else if (med <= 45) { ppa = 12; rot = 'mensal'; }
+    else if (med <= 135) { ppa = 4; rot = 'trimestral'; }
+    else if (med <= 250) { ppa = 2; rot = 'semestral'; }
+    else { ppa = 1; rot = 'anual'; }
+    return { ppa, rot, medianaDias: med, irregular, n: ts.length };
+  }
+
+  /* =========================================================
+     SÉRIE E RETORNOS
+     ========================================================= */
+  /**
+   * Ordena por data, descarta o que não é número e — quando há mais de uma
+   * observação na mesma data — fica com a última, que é a convenção de
+   * fechamento. Somar duas cotações do mesmo dia seria inventar preço.
+   */
+  function serie(rows, dataKey, valorKey) {
+    const m = new Map();
+    for (const r of rows) {
+      const d = r[dataKey], v = r[valorKey];
+      if (!ehData(d) || typeof v !== 'number' || !isFinite(v)) continue;
+      m.set(ms(d), v);
+    }
+    const ts = Array.from(m.keys()).sort((a, b) => a - b);
+    return { datas: ts, valores: ts.map((t) => m.get(t)) };
+  }
+
+  /** Retornos período a período. `log: true` devolve log-retornos. */
+  function retornos(valores, opts) {
+    const log = opts && opts.log;
+    const out = [];
+    for (let i = 1; i < valores.length; i++) {
+      const a = valores[i - 1], b = valores[i];
+      if (!(a > 0) || !isFinite(b)) { out.push(null); continue; }
+      out.push(log ? Math.log(b / a) : b / a - 1);
+    }
+    return out;
+  }
+
+  const limpos = (rs) => rs.filter((r) => typeof r === 'number' && isFinite(r));
+
+  /** Retorno acumulado: produto de (1+r) − 1. Nunca a soma. */
+  function acumulado(rets) {
+    let acc = 1, n = 0;
+    for (const r of rets) { if (typeof r !== 'number' || !isFinite(r)) continue; acc *= (1 + r); n++; }
+    return n ? acc - 1 : null;
+  }
+
+  /** Anos decorridos entre a primeira e a última data, em base 365,25. */
+  function anosEntre(d0, d1) {
+    return (ms(d1) - ms(d0)) / (365.25 * DIA);
+  }
+
+  /** Taxa composta anual. Exige valor inicial positivo e prazo positivo. */
+  function cagr(v0, v1, anos) {
+    if (!(v0 > 0) || !(v1 > 0) || !(anos > 0)) return null;
+    return Math.pow(v1 / v0, 1 / anos) - 1;
+  }
+
+  /** Volatilidade anualizada: desvio-padrão amostral × √períodos por ano. */
+  function volatilidade(rets, ppa) {
+    const r = limpos(rets);
+    if (r.length < 2 || !(ppa > 0)) return null;
+    const sd = S.stdev(r);
+    return sd === null ? null : sd * Math.sqrt(ppa);
+  }
+
+  /* =========================================================
+     PERDA MÁXIMA
+     ========================================================= */
+  /**
+   * Drawdown máximo, quando aconteceu e quanto tempo levou para recuperar.
+   * O tempo submerso costuma doer mais que a profundidade: uma queda de 30%
+   * que volta em dois meses é outra coisa que uma de 20% que leva quatro anos.
+   */
+  function drawdown(datas, valores) {
+    if (!valores || valores.length < 2) return null;
+    let pico = valores[0], iPico = 0;
+    let pior = 0, iInicio = 0, iFundo = 0;
+    const curva = [];
+    for (let i = 0; i < valores.length; i++) {
+      const v = valores[i];
+      if (!isFinite(v)) { curva.push(0); continue; }
+      if (v > pico) { pico = v; iPico = i; }
+      const dd = pico > 0 ? v / pico - 1 : 0;
+      curva.push(dd);
+      if (dd < pior) { pior = dd; iInicio = iPico; iFundo = i; }
+    }
+    // recuperação: primeiro ponto após o fundo que volta ao pico anterior
+    let iRecup = -1;
+    for (let i = iFundo + 1; i < valores.length; i++) {
+      if (valores[i] >= valores[iInicio]) { iRecup = i; break; }
+    }
+    return {
+      max: pior,
+      inicio: datas ? datas[iInicio] : iInicio,
+      fundo: datas ? datas[iFundo] : iFundo,
+      recuperacao: iRecup < 0 ? null : (datas ? datas[iRecup] : iRecup),
+      recuperado: iRecup >= 0,
+      diasAteFundo: datas ? Math.round((ms(datas[iFundo]) - ms(datas[iInicio])) / DIA) : iFundo - iInicio,
+      diasAteRecuperar: iRecup >= 0 && datas ? Math.round((ms(datas[iRecup]) - ms(datas[iInicio])) / DIA) : null,
+      curva: curva
+    };
+  }
+
+  /* =========================================================
+     PRÊMIO POR UNIDADE DE RISCO
+     ========================================================= */
+  /**
+   * Sharpe = (retorno − livre de risco) / volatilidade, tudo anualizado.
+   * `rfAno` é a taxa livre de risco ao ano (CDI, Selic) em decimal; a
+   * conversão para o período é geométrica, não divisão por 12.
+   */
+  function sharpe(rets, ppa, rfAno) {
+    const r = limpos(rets);
+    if (r.length < 3 || !(ppa > 0)) return null;
+    const rfPer = rfAno ? Math.pow(1 + rfAno, 1 / ppa) - 1 : 0;
+    const ex = r.map((x) => x - rfPer);
+    const sd = S.stdev(ex);
+    if (sd === null || sd === 0) return null;
+    return (S.mean(ex) / sd) * Math.sqrt(ppa);
+  }
+
+  /** Sortino: só a volatilidade das quedas entra no denominador. */
+  function sortino(rets, ppa, rfAno) {
+    const r = limpos(rets);
+    if (r.length < 3 || !(ppa > 0)) return null;
+    const rfPer = rfAno ? Math.pow(1 + rfAno, 1 / ppa) - 1 : 0;
+    const ex = r.map((x) => x - rfPer);
+    const neg = ex.filter((x) => x < 0);
+    if (neg.length < 2) return null;
+    // desvio-padrão a partir de zero, não da média das negativas
+    let s2 = 0; for (const x of neg) s2 += x * x;
+    const dd = Math.sqrt(s2 / ex.length);
+    if (!(dd > 0)) return null;
+    return (S.mean(ex) / dd) * Math.sqrt(ppa);
+  }
+
+  /* =========================================================
+     RELAÇÃO COM UM ÍNDICE
+     ========================================================= */
+  /** Beta = cov(ativo, índice) / var(índice), com as datas pareadas. */
+  function beta(retsAtivo, retsIndice) {
+    const xs = [], ys = [];
+    for (let i = 0; i < Math.min(retsAtivo.length, retsIndice.length); i++) {
+      const a = retsAtivo[i], b = retsIndice[i];
+      if (typeof a !== 'number' || typeof b !== 'number' || !isFinite(a) || !isFinite(b)) continue;
+      ys.push(a); xs.push(b);
+    }
+    if (xs.length < 3) return null;
+    const mx = S.mean(xs), my = S.mean(ys);
+    let cov = 0, varx = 0;
+    for (let i = 0; i < xs.length; i++) { cov += (xs[i] - mx) * (ys[i] - my); varx += (xs[i] - mx) * (xs[i] - mx); }
+    if (!(varx > 0)) return null;
+    return { beta: cov / varx, r: S.pearson(xs, ys), n: xs.length, alfa: my - (cov / varx) * mx };
+  }
+
+  /** Pareia duas séries pela data — comparar por posição é erro silencioso. */
+  function parear(sA, sB) {
+    const m = new Map();
+    for (let i = 0; i < sB.datas.length; i++) m.set(ms(sB.datas[i]), sB.valores[i]);
+    const datas = [], a = [], b = [];
+    for (let i = 0; i < sA.datas.length; i++) {
+      const t = ms(sA.datas[i]);
+      if (!m.has(t)) continue;
+      datas.push(sA.datas[i]); a.push(sA.valores[i]); b.push(m.get(t));
+    }
+    return { datas, a, b, casados: datas.length, deA: sA.datas.length, deB: sB.datas.length };
+  }
+
+  /* =========================================================
+     PERDA EM CENÁRIO RUIM
+     ========================================================= */
+  /**
+   * VaR histórico: o quantil empírico das piores perdas. Devolvido como
+   * número positivo (perda). O paramétrico entra junto só para mostrar o
+   * quanto a hipótese normal subestima a cauda — que é o ponto.
+   */
+  function var_(rets, alfa) {
+    const r = limpos(rets).slice().sort((x, y) => x - y);
+    if (r.length < 20) return null;
+    const a = alfa || 0.05;
+    const q = S.quantile(r, a);
+    const m = S.mean(r), sd = S.stdev(r);
+    const z = a === 0.01 ? 2.326348 : a === 0.05 ? 1.644854 : a === 0.10 ? 1.281552 : 1.644854;
+    // perda esperada além do VaR (Expected Shortfall / CVaR)
+    const cauda = r.filter((x) => x <= q);
+    return {
+      historico: -q,
+      parametrico: -(m - z * sd),
+      cvar: cauda.length ? -S.mean(cauda) : null,
+      alfa: a, n: r.length
+    };
+  }
+
+  /* =========================================================
+     INFLAÇÃO E COMPARABILIDADE
+     ========================================================= */
+  /**
+   * Deflaciona uma série por um índice de preços. `indice` é uma série com
+   * as mesmas datas (ou datas mensais que cobrem as da série).
+   * `baseData` ausente = preços da última data disponível.
+   */
+  function deflacionar(datas, valores, idxDatas, idxValores, baseData) {
+    const idx = new Map();
+    for (let i = 0; i < idxDatas.length; i++) idx.set(mesChave(idxDatas[i]), idxValores[i]);
+    const base = baseData ? idx.get(mesChave(baseData)) : idxValores[idxValores.length - 1];
+    if (!(base > 0)) return null;
+    const out = [], faltando = [];
+    for (let i = 0; i < datas.length; i++) {
+      const k = mesChave(datas[i]);
+      const iv = idx.get(k);
+      if (!(iv > 0)) { out.push(null); faltando.push(datas[i]); continue; }
+      out.push(valores[i] * (base / iv));
+    }
+    return { valores: out, base: base, faltando: faltando.length, cobertos: out.filter((x) => x !== null).length };
+  }
+  function mesChave(d) {
+    const x = d instanceof Date ? d : new Date(d);
+    return x.getUTCFullYear() * 100 + x.getUTCMonth();
+  }
+
+  /**
+   * Índice de preços a partir de uma série de VARIAÇÕES mensais (%), como o
+   * IPCA é publicado. Encadeia a partir de 100.
+   */
+  function indiceDeVariacoes(variacoes, emPercent) {
+    let acc = 100;
+    const out = [];
+    for (const v of variacoes) {
+      const t = typeof v === 'number' && isFinite(v) ? (emPercent ? v / 100 : v) : 0;
+      acc *= (1 + t);
+      out.push(acc);
+    }
+    return out;
+  }
+
+  /** Rebase: toda série começa em 100, para comparar formatos diferentes. */
+  function base100(valores) {
+    const b = valores.find((v) => typeof v === 'number' && isFinite(v) && v !== 0);
+    if (b === undefined) return null;
+    return valores.map((v) => (typeof v === 'number' && isFinite(v) ? (v / b) * 100 : null));
+  }
+
+  /* =========================================================
+     JANELAS MÓVEIS
+     ========================================================= */
+  function movel(valores, janela, fn) {
+    const out = [];
+    for (let i = 0; i < valores.length; i++) {
+      if (i + 1 < janela) { out.push(null); continue; }
+      const w = valores.slice(i + 1 - janela, i + 1).filter((x) => typeof x === 'number' && isFinite(x));
+      out.push(w.length === janela ? fn(w) : null);
+    }
+    return out;
+  }
+
+  /* =========================================================
+     LIMITES DA LEI DE RESPONSABILIDADE FISCAL
+     Os percentuais são de lei, não de conveniência: LC 101/2000, arts. 19,
+     20 e 22 (pessoal), Resolução SF 40/2001 (dívida) e 43/2001 (garantias).
+     O limite prudencial é 95% do limite legal — e é ele que aciona vedações.
+     ========================================================= */
+  const LRF = {
+    pessoal: {
+      municipio: { limite: 0.60, executivo: 0.54, legislativo: 0.06 },
+      estado: { limite: 0.60, executivo: 0.49, legislativo: 0.03 },
+      uniao: { limite: 0.50, executivo: 0.409, legislativo: 0.025 }
+    },
+    dividaConsolidada: { municipio: 1.20, estado: 2.00 },
+    garantias: { municipio: 0.22, estado: 0.22 },
+    operacoesCredito: 0.16,
+    prudencial: 0.95,
+    alerta: 0.90
+  };
+
+  /** Situação de um indicador contra o seu limite, com faixa de alerta. */
+  function limiteLRF(valor, rcl, limite) {
+    if (!(rcl > 0) || !(limite > 0)) return null;
+    const pct = valor / rcl;
+    const uso = pct / limite;
+    return {
+      percentual: pct, limite: limite, uso: uso,
+      faixa: uso >= 1 ? 'estourado' : uso >= LRF.prudencial ? 'prudencial' : uso >= LRF.alerta ? 'alerta' : 'dentro',
+      folga: (limite - pct) * rcl
+    };
+  }
+
+  /* =========================================================
+     INDICADORES DE DEMONSTRAÇÃO CONTÁBIL
+     ========================================================= */
+  const div = (a, b) => (typeof a === 'number' && typeof b === 'number' && b !== 0 && isFinite(a / b) ? a / b : null);
+  function indicadores(c) {
+    return {
+      margemBruta: div(c.lucroBruto, c.receita),
+      margemOperacional: div(c.ebit, c.receita),
+      margemLiquida: div(c.lucroLiquido, c.receita),
+      liquidezCorrente: div(c.ativoCirculante, c.passivoCirculante),
+      liquidezSeca: div((c.ativoCirculante || 0) - (c.estoques || 0), c.passivoCirculante),
+      endividamento: div(c.passivoTotal, c.ativoTotal),
+      alavancagem: div(c.dividaLiquida, c.ebitda),
+      roe: div(c.lucroLiquido, c.patrimonioLiquido),
+      roa: div(c.lucroLiquido, c.ativoTotal),
+      giro: div(c.receita, c.ativoTotal)
+    };
+  }
+
+  /* =========================================================
+     RESUMO COMPLETO DE UMA SÉRIE DE PREÇOS
+     ========================================================= */
+  function resumo(datas, valores, opts) {
+    const o = opts || {};
+    const freq = frequencia(datas);
+    const ppa = o.ppa || (freq ? freq.ppa : null);
+    const rets = retornos(valores, { log: false });
+    const anos = anosEntre(datas[0], datas[datas.length - 1]);
+    const dd = drawdown(datas, valores);
+    const acum = acumulado(rets);
+    return {
+      freq: freq, ppa: ppa, n: valores.length, anos: anos,
+      inicio: datas[0], fim: datas[datas.length - 1],
+      primeiro: valores[0], ultimo: valores[valores.length - 1],
+      retornos: rets,
+      acumulado: acum,
+      cagr: anos >= 0.5 ? cagr(valores[0], valores[valores.length - 1], anos) : null,
+      vol: ppa ? volatilidade(rets, ppa) : null,
+      sharpe: ppa ? sharpe(rets, ppa, o.rfAno) : null,
+      sortino: ppa ? sortino(rets, ppa, o.rfAno) : null,
+      drawdown: dd,
+      var: var_(rets, o.alfa || 0.05),
+      melhor: melhorPior(datas, rets, 1),
+      pior: melhorPior(datas, rets, -1),
+      positivos: limpos(rets).filter((r) => r > 0).length,
+      totalRets: limpos(rets).length
+    };
+  }
+  function melhorPior(datas, rets, sinal) {
+    let best = null;
+    for (let i = 0; i < rets.length; i++) {
+      const r = rets[i];
+      if (typeof r !== 'number' || !isFinite(r)) continue;
+      if (best === null || r * sinal > best.valor * sinal) best = { valor: r, data: datas[i + 1] };
+    }
+    return best;
+  }
+
+  AG.fin = {
+    frequencia, serie, retornos, acumulado, anosEntre, cagr, volatilidade,
+    drawdown, sharpe, sortino, beta, parear, var: var_, deflacionar,
+    indiceDeVariacoes, base100, movel, limiteLRF, LRF, indicadores, resumo,
+    DIA: DIA
+  };
+})();
+
+
 /* ==== 80-app.js ==== */
 /* ============================================================
    80 — APLICAÇÃO: ingestão, conversa, drill-down e reaprendizado
@@ -9664,6 +10185,7 @@ const GRANS = {
         activeDsId: APP.activeDsId, filters: APP.filters
       });
     }
+    APP.ultimoPlano = plan;      // último plano executado, para auditoria e teste
 
     const hasDocs = APP.datasets.some((d) => d.kind === 'doc');
     const weakTabular = !plan.explicitMeasure && !plan.explicitDims && !plan.intentExplicit;
@@ -15927,7 +16449,13 @@ const GRANS = {
     return { linhas, paginas: n, truncou };
   }
 
-  async function buscarEIngerir(f, url, out, botao, opts) {
+  /**
+   * Uma chamada só, dois usos. `Testar agora` e `Trazer para o agente` percorrem
+   * exatamente o mesmo caminho — muda só o que acontece no fim. E o que foi
+   * testado fica em mãos: trazer depois de testar NÃO refaz a requisição.
+   * Testar e depois buscar de novo é pedir para o servidor responder outra coisa.
+   */
+  async function chamar(f, url, out, botao, opts) {
     const cfg = opts || {};
     const rot = botao.textContent;
     botao.disabled = true; botao.textContent = 'Consultando…';
@@ -15967,18 +16495,20 @@ const GRANS = {
         const acc = await paginarORDS(url, j, ctrl.signal, (n) => { botao.textContent = 'Página ' + n + '…'; });
         linhas = acc.linhas; truncou = acc.truncou; paginas = acc.paginas;
       }
-      if (!linhas || !linhas.length) {
-        out.appendChild(aviso('warn', 'A chamada respondeu (' + r.status + ', ' + ms + ' ms) mas não veio nenhum registro. ' +
-          'Confira os parâmetros — muitos endpoints do Tesouro exigem exercício e ente obrigatórios.'));
-        out.appendChild(el('pre', { class: 'plan-body', text: txt.slice(0, 600) }));
-        return;
-      }
+
+      mostrarResultado(out, {
+        ok: r.ok, status: r.status, ms: Date.now() - t0, bytes: txt.length,
+        linhas: linhas, bruto: j, paginas: paginas, truncou: truncou,
+        nome: nome, url: url
+      });
+
+      if (!linhas || !linhas.length) return;
+      if (!cfg.ingerir) return;
+
       const total = Date.now() - t0;
       const ok = await trazer(nome, linhas, url);
       if (ok) {
-        if (truncou) {
-          AG.toast('Parei em ' + TETO_PAG + ' páginas: a base tem mais registros do que isso.');
-        }
+        if (truncou) AG.toast('Parei em ' + TETO_PAG + ' páginas: a base tem mais registros do que isso.');
         fechar();
         AG.toast(nome + ' carregada: ' + AG.fmtNum(linhas.length) + ' registros' +
           (paginas > 1 ? ' em ' + paginas + ' páginas' : '') + ' (' + total + ' ms).');
@@ -16001,6 +16531,105 @@ const GRANS = {
     } finally {
       clearTimeout(tmr); botao.disabled = false; botao.textContent = rot;
     }
+  }
+
+  /* =========================================================
+     O RESULTADO DA CHAMADA, À VISTA
+     Antes de virar base, o dado é mostrado: status, tempo, tamanho, quantos
+     registros, quais colunas e as primeiras linhas. Quem confere a prévia
+     descobre ali que o filtro foi ignorado — não três análises depois.
+     ========================================================= */
+  const PREV_LINHAS = 60, PREV_COLS = 14;
+
+  function paraCSV(linhas) {
+    const planas = linhas.map((x) => achatar(x));
+    const cols = [];
+    for (const o of planas) for (const k in o) if (cols.indexOf(k) < 0) cols.push(k);
+    const cel = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    return [cols.join(';')].concat(planas.map((o) => cols.map((c) => cel(o[c])).join(';'))).join('\r\n');
+  }
+
+  function marca(txt, cls) { return el('span', { class: 'marca' + (cls ? ' ' + cls : ''), text: txt }); }
+
+  function mostrarResultado(out, r) {
+    const cx = el('div', { class: 'res-chamada' });
+    const cab = el('div', { class: 'res-cab' });
+    cab.appendChild(marca('HTTP ' + r.status, r.ok ? 'ok' : 'ruim'));
+    cab.appendChild(marca(r.ms + ' ms'));
+    cab.appendChild(marca((r.bytes / 1024).toFixed(1) + ' KB'));
+    if (r.linhas) cab.appendChild(marca(AG.fmtNum(r.linhas.length) + ' registros'));
+    if (r.paginas > 1) cab.appendChild(marca(r.paginas + ' páginas'));
+    const b = r.bruto || {};
+    if (b.count !== null && b.count !== undefined) cab.appendChild(marca('count ' + b.count));
+    if (b.totalRegistros !== null && b.totalRegistros !== undefined) cab.appendChild(marca('total ' + AG.fmtNum(Number(b.totalRegistros))));
+    if (r.truncou) cab.appendChild(marca('parei no teto de ' + TETO_PAG + ' páginas', 'ruim'));
+    else if (b.hasMore) cab.appendChild(marca('há mais páginas', 'ruim'));
+    cx.appendChild(cab);
+
+    if (!r.linhas || !r.linhas.length) {
+      cx.appendChild(aviso('warn', r.linhas
+        ? 'A consulta funcionou, mas <b>não há registros</b> para esses parâmetros. Confira exercício, período e código do ente.'
+        : 'A resposta veio, mas não tem uma lista de registros reconhecível.'));
+      cx.appendChild(el('pre', {
+        class: 'plan-body',
+        text: (typeof r.bruto === 'string' ? r.bruto : JSON.stringify(r.bruto, null, 2)).slice(0, 2000)
+      }));
+      out.appendChild(cx);
+      return;
+    }
+
+    const amostra = r.linhas.slice(0, PREV_LINHAS).map((x) => achatar(x));
+    const cols = [];
+    for (const o of amostra) for (const k in o) if (cols.indexOf(k) < 0) cols.push(k);
+    const vis = cols.slice(0, PREV_COLS);
+
+    const w = el('div', { class: 'tbl-wrap', style: { maxHeight: '300px', marginTop: '8px' } });
+    const t = el('table', { class: 'tbl' });
+    const thead = el('thead'), trh = el('tr');
+    for (const c of vis) trh.appendChild(el('th', { text: c }));
+    thead.appendChild(trh); t.appendChild(thead);
+    const tb = el('tbody');
+    for (const o of amostra) {
+      const tr = el('tr');
+      for (const c of vis) {
+        const v = o[c];
+        tr.appendChild(el('td', { class: typeof v === 'number' ? 'num' : '', text: v === null || v === undefined ? '' : String(v) }));
+      }
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb); w.appendChild(t); cx.appendChild(w);
+
+    const nota = [];
+    if (r.linhas.length > PREV_LINHAS) nota.push('prévia das primeiras ' + PREV_LINHAS + ' de ' + AG.fmtNum(r.linhas.length) + ' linhas');
+    if (cols.length > PREV_COLS) nota.push(cols.length - PREV_COLS + ' colunas a mais não cabem aqui');
+    nota.push('trazer para o agente leva tudo');
+    cx.appendChild(el('div', { class: 'hint', style: { marginTop: '6px' }, text: nota.join(' · ') }));
+
+    const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
+    const bTrazer = el('button', {
+      class: 'btn sm primary', text: 'Trazer estes dados para o agente',
+      onclick: async () => {
+        bTrazer.disabled = true; bTrazer.textContent = 'Carregando…';
+        const ok = await trazer(r.nome, r.linhas, r.url);
+        if (ok) { fechar(); AG.toast(r.nome + ' carregada: ' + AG.fmtNum(r.linhas.length) + ' registros.'); }
+        else { bTrazer.disabled = false; bTrazer.textContent = 'Trazer estes dados para o agente'; }
+      }
+    });
+    acoes.appendChild(bTrazer);
+    acoes.appendChild(el('button', {
+      class: 'btn sm', text: 'Baixar CSV',
+      onclick: () => AG.download(AG.slug(r.nome).slice(0, 40) + '.csv', '﻿' + paraCSV(r.linhas), 'text/csv;charset=utf-8')
+    }));
+    acoes.appendChild(el('button', {
+      class: 'btn sm', text: 'Baixar JSON',
+      onclick: () => AG.download(AG.slug(r.nome).slice(0, 40) + '.json', JSON.stringify(r.linhas, null, 2), 'application/json')
+    }));
+    cx.appendChild(acoes);
+    out.appendChild(cx);
   }
 
   function aviso(nivel, html) {
@@ -16035,17 +16664,21 @@ const GRANS = {
     const abas = el('div', { class: 'pill-row', style: { marginBottom: '10px' } });
     const painelCat = el('div');
     const painelRec = el('div', { style: { display: 'none' } });
+    const painelFin = el('div', { style: { display: 'none' } });
     const btnCat = el('button', { class: 'pill sel', text: 'Catálogo (' + F.FONTES.length + ' fontes)' });
     const btnRec = el('button', { class: 'pill', text: 'Receitas prontas (' + F.RECEITAS.length + ')' });
-    btnCat.addEventListener('click', () => {
-      btnCat.classList.add('sel'); btnRec.classList.remove('sel');
-      painelCat.style.display = ''; painelRec.style.display = 'none';
-    });
-    btnRec.addEventListener('click', () => {
-      btnRec.classList.add('sel'); btnCat.classList.remove('sel');
-      painelRec.style.display = ''; painelCat.style.display = 'none';
-    });
-    abas.appendChild(btnCat); abas.appendChild(btnRec);
+    const btnFin = el('button', { class: 'pill', text: '💹 Financeiro (' + (F.RECEITAS_ARQUIVO || []).length + ')' });
+    const paineis = [painelCat, painelRec, painelFin], botoes = [btnCat, btnRec, btnFin];
+    const mostra = (i) => {
+      for (let k = 0; k < paineis.length; k++) {
+        paineis[k].style.display = k === i ? '' : 'none';
+        botoes[k].classList[k === i ? 'add' : 'remove']('sel');
+      }
+    };
+    btnCat.addEventListener('click', () => mostra(0));
+    btnRec.addEventListener('click', () => mostra(1));
+    btnFin.addEventListener('click', () => mostra(2));
+    abas.appendChild(btnCat); abas.appendChild(btnRec); abas.appendChild(btnFin);
     body.appendChild(abas);
 
     /* --- catálogo --- */
@@ -16097,8 +16730,21 @@ const GRANS = {
     }));
     for (const r of F.RECEITAS) painelRec.appendChild(cartaoReceita(r));
 
+    /* --- financeiro: por que é arquivo, e onde baixar cada um --- */
+    painelFin.appendChild(AG.ui.insightNode(AG.insights.ins('warn', '⚠',
+      '<b>Nenhuma API financeira brasileira responde ao navegador.</b> BCB (SGS e Olinda), Tesouro Transparente e os portais CKAN ' +
+      'negam CORS — auditado em ' + F.AUDIT_DATE + '. A brapi exige token, que não deve viver em código de navegador. ' +
+      'E o Google Finance não tem API pública: quem promete cotação em tempo real num HTML offline ou tem servidor, ou está raspando página. ' +
+      'Por isso o caminho aqui é o <b>arquivo</b> — e o que falta a quem vai baixar não é vontade, é saber qual arquivo.')));
+    for (const r of (F.RECEITAS_ARQUIVO || [])) painelFin.appendChild(cartaoArquivo(r));
+    painelFin.appendChild(el('div', { class: 'hint', style: { marginTop: '12px' },
+      html: 'Com o arquivo carregado, as perguntas que a camada financeira entende: <b>retorno e risco</b>, ' +
+        '<b>volatilidade</b>, <b>drawdown</b>, <b>sharpe com cdi de 11%</b>, <b>beta em relação ao índice</b>, ' +
+        '<b>valores reais descontada a inflação</b>, <b>limite de pessoal pela LRF</b>, <b>indicadores contábeis</b>.' }));
+
     body.appendChild(painelCat);
     body.appendChild(painelRec);
+    body.appendChild(painelFin);
 
     dlg = AG.modal('Fontes públicas · catálogo auditado em ' + F.AUDIT_DATE, body, [
       el('button', { class: 'btn', text: 'Fechar', onclick: fechar })
@@ -16140,16 +16786,54 @@ const GRANS = {
     if (r.desc) c.appendChild(el('div', { class: 'fonte-desc', text: r.desc }));
     c.appendChild(el('code', { class: 'url-montada', text: r.url }));
     const out = el('div', { style: { marginTop: '8px' } });
-    const btn = el('button', { class: 'btn sm primary', text: 'Trazer para o agente' });
     const alvo = f || { nome: r.titulo || r.id, doc: null, acesso: 'live', base: r.url };
-    btn.addEventListener('click', () => {
-      if (!r.url) { out.appendChild(aviso('crit', 'Esta receita não tem chamada registrada.')); return; }
-      buscarEIngerir(alvo, r.url, out, btn, { paginar: !!r.paginar, nome: r.titulo || alvo.nome });
+    const cfg = { paginar: !!r.paginar, nome: r.titulo || alvo.nome };
+    const semURL = () => { out.appendChild(aviso('crit', 'Esta receita não tem chamada registrada.')); };
+
+    const bTeste = el('button', { class: 'btn sm primary', text: 'Testar agora' });
+    bTeste.addEventListener('click', () => {
+      if (!r.url) return semURL();
+      chamar(alvo, r.url, out, bTeste, Object.assign({ ingerir: false }, cfg));
     });
-    const linha = el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [btn]);
+    const btn = el('button', { class: 'btn sm', text: 'Trazer para o agente' });
+    btn.addEventListener('click', () => {
+      if (!r.url) return semURL();
+      chamar(alvo, r.url, out, btn, Object.assign({ ingerir: true }, cfg));
+    });
+
+    const linha = el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [bTeste, btn]);
     if (f) linha.appendChild(el('button', { class: 'btn sm ghost', text: 'Ver a fonte', onclick: () => detalhe(f) }));
     c.appendChild(linha);
     c.appendChild(out);
+    return c;
+  }
+
+  /* Receita de arquivo: não tem botão de buscar, porque não há o que buscar.
+     Tem o portal, o passo a passo e a pergunta que fecha o ciclo. */
+  function cartaoArquivo(r) {
+    const c = el('div', { class: 'fonte-item' });
+    const cab = el('div', { class: 'fonte-cab' });
+    cab.appendChild(el('div', { class: 'fonte-nome', text: r.titulo }));
+    cab.appendChild(el('span', { class: 'selo selo-file', text: 'baixar e arrastar' }));
+    c.appendChild(cab);
+    c.appendChild(el('div', { class: 'fonte-meta', text: r.org }));
+    c.appendChild(el('div', { class: 'fonte-desc', text: r.desc }));
+    const ol = el('ol', { class: 'passos' });
+    for (const p of (r.passos || [])) ol.appendChild(el('li', { text: p }));
+    c.appendChild(ol);
+    if (r.alternativa) c.appendChild(el('div', { class: 'hint', text: r.alternativa }));
+    if (r.portal) {
+      c.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [
+        el('button', { class: 'btn sm primary', text: 'Abrir o portal', onclick: () => window.open(r.portal, '_blank', 'noopener') }),
+        el('button', {
+          class: 'btn sm', text: 'Copiar endereço',
+          onclick: () => {
+            if (navigator.clipboard) navigator.clipboard.writeText(r.portal).then(() => AG.toast('Endereço copiado.'), () => AG.toast('Não consegui copiar.'));
+            else AG.toast('Cópia não disponível neste navegador.');
+          }
+        })
+      ]));
+    }
     return c;
   }
 
@@ -16159,11 +16843,49 @@ const GRANS = {
     const a = F.ACESSOS[f.acesso] || {};
     // o nome já está no cabeçalho da janela: aqui vale o selo e a ficha técnica
     body.appendChild(el('div', { class: 'fonte-cab', style: { marginBottom: '4px' } }, [
-      el('div', { class: 'fonte-meta', text: f.org + ' · ' + (f.formato || '') + (f.periodicidade ? ' · ' + f.periodicidade : '') }),
+      el('div', { class: 'fonte-meta', text: f.org }),   // o resto está na ficha técnica
       selo(f)
     ]));
     body.appendChild(el('div', { class: 'fonte-desc', style: { margin: '10px 0' }, text: f.desc }));
-    if (f.cobertura) body.appendChild(el('div', { class: 'hint', text: 'Cobertura: ' + f.cobertura }));
+
+    /* Atalho para a fonte primária: várias entradas do catálogo são camada de
+       apresentação de um dado que existe em API noutro lugar. Dizer isso poupa
+       o download manual de algo que responde direto ao navegador. */
+    if (f.equivale) {
+      const alvo = F.FONTES.find((x) => x.id === f.equivale);
+      if (alvo) {
+        const aa = F.ACESSOS[alvo.acesso] || {};
+        const cx = el('div', { class: 'atalho-fonte' });
+        cx.appendChild(el('span', {
+          text: alvo.acesso === 'live'
+            ? 'O dado por trás desta página está em '
+            : 'Fonte primária do dado desta página: '
+        }));
+        cx.appendChild(el('button', { class: 'btn sm', text: alvo.nome, onclick: () => detalhe(alvo) }));
+        cx.appendChild(el('span', {
+          text: alvo.acesso === 'live'
+            ? ', que responde por API — prefira consultar de lá.'
+            : ' (' + (aa.curto || aa.rot || alvo.acesso) + ').'
+        }));
+        body.appendChild(cx);
+      }
+    }
+
+    /* --- ficha técnica --- */
+    const ficha = [
+      ['Cobertura', f.cobertura],
+      ['Granularidade', F.GRANS[f.gran] || f.gran],
+      ['Formato', f.formato],
+      ['Atualização', f.periodicidade],
+      ['Domínio', (F.DOMINIOS[f.dom] || {}).rot || f.dom],
+      ['Acesso', a.rot || f.acesso]
+    ].filter((x) => x[1]);
+    if (ficha.length) {
+      body.appendChild(el('h3', { class: 'sec-tit', text: 'Ficha técnica' }));
+      const dl = el('dl', { class: 'ficha' });
+      for (const [k, v] of ficha) { dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: String(v) })); }
+      body.appendChild(dl);
+    }
 
     if (f.auditoria) {
       body.appendChild(AG.ui.insightNode(AG.insights.ins(
@@ -16179,7 +16901,7 @@ const GRANS = {
     const atualiza = () => { urlBox.textContent = montarURL(f, valores); };
 
     if ((f.params || []).length) {
-      body.appendChild(el('h3', { style: { fontSize: '13px', margin: '14px 0 6px' }, text: 'Parâmetros' }));
+      body.appendChild(el('h3', { class: 'sec-tit', text: 'Parâmetros' }));
       const grid = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '10px' } });
       for (const p of f.params) {
         const inp = el('input', { class: 'inp', value: p.v === null || p.v === undefined ? '' : String(p.v) });
@@ -16193,21 +16915,39 @@ const GRANS = {
       body.appendChild(grid);
     }
 
-    body.appendChild(el('h3', { style: { fontSize: '13px', margin: '14px 0 6px' }, text: 'Chamada' }));
+    body.appendChild(el('h3', { class: 'sec-tit', text: 'Chamada' }));
     body.appendChild(urlBox);
     atualiza();
 
+    const copia = (txt, ok) => {
+      if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => AG.toast(ok), () => AG.toast('Não consegui copiar.'));
+      else AG.toast('Cópia não disponível neste navegador.');
+    };
+
     const out = el('div', { style: { marginTop: '10px' } });
     const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
-    const btnTrazer = el('button', { class: 'btn sm primary', text: 'Trazer para o agente' });
-    btnTrazer.addEventListener('click', () => buscarEIngerir(f, montarURL(f, valores), out, btnTrazer));
+
+    /* Testar primeiro, trazer depois: quem confere a prévia vê o filtro
+       ignorado ali, e não três análises adiante. Trazer sem testar continua
+       valendo — é a mesma chamada, com ingestão no fim. */
+    const btnTeste = el('button', { class: 'btn sm primary', text: 'Testar agora' });
+    btnTeste.addEventListener('click', () => chamar(f, montarURL(f, valores), out, btnTeste, { ingerir: false }));
+    acoes.appendChild(btnTeste);
+
+    const btnTrazer = el('button', { class: 'btn sm', text: 'Trazer para o agente' });
+    btnTrazer.addEventListener('click', () => chamar(f, montarURL(f, valores), out, btnTrazer, { ingerir: true }));
     acoes.appendChild(btnTrazer);
+
     acoes.appendChild(el('button', {
       class: 'btn sm', text: 'Copiar URL',
+      onclick: () => copia(montarURL(f, valores), 'URL copiada.')
+    }));
+    acoes.appendChild(el('button', {
+      class: 'btn sm', text: 'Copiar fetch()',
       onclick: () => {
         const u = montarURL(f, valores);
-        if (navigator.clipboard) navigator.clipboard.writeText(u).then(() => AG.toast('URL copiada.'), () => AG.toast('Não consegui copiar.'));
-        else AG.toast('Cópia não disponível neste navegador.');
+        const cab = f.acesso === 'key' ? ',\n  { headers: { \'chave-api-dados\': \'SUA_CHAVE\' } }' : '';
+        copia('const r = await fetch(\n  "' + u + '"' + cab + '\n);\nconst dados = await r.json();', 'Snippet copiado.');
       }
     }));
     acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Abrir numa aba', onclick: () => window.open(montarURL(f, valores), '_blank', 'noopener') }));
@@ -16234,6 +16974,656 @@ const GRANS = {
     const b = AG.$('#btn-fontes');
     if (b) b.addEventListener('click', abrirFontes);
   });
+})();
+
+
+/* ==== 91-render-financeiro.js ==== */
+/* ============================================================
+   91 — RENDERIZAÇÃO DA CAMADA FINANCEIRA
+   Cinco leituras que o agente não sabia fazer: risco de uma série, relação
+   com um índice, valor real, limites da LRF e indicadores contábeis.
+
+   A decisão que mais importa aqui é como a série é montada. Somar preços do
+   mesmo dia inventa preço; pegar o último valor de uma receita mensal joga
+   fora a maior parte do dinheiro. Então a convenção é DETECTADA pelo nome e
+   pela forma da coluna — e é DITA na tela, porque quem lê o número precisa
+   saber qual das duas contas foi feita.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const F = AG.fin;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, res) {
+    if (res) body.appendChild(U().planDetails(plan, ds, res));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+  const fakeRes = (plan, ds, n) => ({ plan, ds, rowsScanned: ds.rows.length, rowsMatched: n, elapsed: 0 });
+  const pct = (v, c) => (v === null || v === undefined ? '—' : AG.fmtPct(v, c === undefined ? 1 : c));
+  const num = (v, c) => (v === null || v === undefined ? '—' : Number(v).toFixed(c === undefined ? 2 : c).replace('.', ','));
+  const emMs = (d) => (d instanceof Date ? d.getTime() : d);
+  const dia = (d) => (d === null || d === undefined ? '—' : AG.fmtDate(emMs(d)));
+  /* rótulo do eixo segue a frequência: 60 datas diárias com dd/mm/aaaa viram
+     um borrão, e 'jan/24' repetido 20 vezes esconde que são dias diferentes */
+  const grao = (f) => (!f ? null : f.ppa >= 52 ? null : f.ppa >= 4 ? 'month' : 'year');
+  const rot = (d, g) => AG.fmtDate(emMs(d), g);
+
+  /* =========================================================
+     MONTAGEM DA SÉRIE — e a convenção, dita em voz alta
+     ========================================================= */
+  const PRECO_RE = /(preco|pre[çc]o|cota[çc]?[ãa]o|cotacao|fechamento|close|abertura|open|cota\b|valor da cota|indice|índice|ibov|dolar|d[óo]lar|taxa|selic|ipca|c[âa]mbio|patrim[oô]nio por cota|nav\b|pontos)/i;
+
+  function colunaData(ds, plan) {
+    if (plan.period && plan.period.column) {
+      const c = ds.columns.find((x) => x.key === plan.period.column);
+      if (c) return c;
+    }
+    // o perfilador marca datas com o papel 'time'; procurar 'date' devolvia
+    // sempre nulo e derrubava toda a camada no primeiro passo
+    return ds.columns.find((c) => c.role === 'time' && !c.virtual) || null;
+  }
+  function colunaMedida(ds, plan) {
+    if (plan.measure && plan.measure.column) {
+      const c = ds.columns.find((x) => x.key === plan.measure.column);
+      if (c) return c;
+    }
+    return ds.columns.find((c) => c.role === 'measure' && !c.virtual) || null;
+  }
+
+  /**
+   * Devolve a série pronta e diz qual convenção usou.
+   * - Nome de preço/índice/taxa → ÚLTIMO valor da data (fechamento).
+   * - Qualquer outra medida com várias linhas por data → SOMA da data.
+   * Uma linha por data: as duas convenções coincidem, e não há o que decidir.
+   */
+  function serieDoPlano(ds, plan) {
+    const cd = colunaData(ds, plan), cm = colunaMedida(ds, plan);
+    if (!cd) throw new Error('esta fonte não tem uma coluna de data — sem eixo do tempo não há retorno nem risco a calcular');
+    if (!cm) throw new Error('esta fonte não tem uma coluna numérica para tratar como valor');
+
+    const rows = engine.applyFilters(ds, plan);
+    const porData = new Map();
+    for (const r of rows) {
+      const d = r[cd.key], v = r[cm.key];
+      const t = emMs(d);
+      if (typeof t !== 'number' || !isFinite(t) || typeof v !== 'number' || !isFinite(v)) continue;
+      if (!porData.has(t)) porData.set(t, []);
+      porData.get(t).push(v);
+    }
+    if (porData.size < 3) throw new Error('série curta demais: encontrei ' + porData.size + ' data(s) com valor numérico');
+
+    let repetidas = 0;
+    for (const v of porData.values()) if (v.length > 1) repetidas++;
+    const ehPreco = PRECO_RE.test(cm.label) || PRECO_RE.test(cm.key);
+    const convencao = repetidas === 0 ? 'unica' : (ehPreco ? 'ultimo' : 'soma');
+
+    const ts = Array.from(porData.keys()).sort((a, b) => a - b);
+    const datas = ts;                      // milissegundos, como o motor guarda
+    const valores = ts.map((t) => {
+      const v = porData.get(t);
+      return convencao === 'soma' ? v.reduce((a, b) => a + b, 0) : v[v.length - 1];
+    });
+    return {
+      datas, valores, colData: cd, colMedida: cm, convencao, repetidas,
+      linhas: rows.length,
+      nota: convencao === 'unica'
+        ? 'uma linha por data — não houve o que agregar'
+        : convencao === 'ultimo'
+          ? '<b>' + AG.esc(cm.label) + '</b> foi tratada como preço: em datas repetidas vale o <b>último</b> valor (fechamento), nunca a soma'
+          : '<b>' + AG.esc(cm.label) + '</b> foi tratada como fluxo: datas repetidas foram <b>somadas</b>'
+    };
+  }
+
+  /** Nota de frequência — e o motivo de ela não ser um detalhe. */
+  function notaFreq(s) {
+    const f = s.freq;
+    if (!f) return ins('warn', '⚠', 'Não consegui medir a frequência da série, então <b>nada foi anualizado</b>. Volatilidade e Sharpe dependem dela: anualizar série diária como se fosse mensal erra por √21 ≈ 4,6 vezes.');
+    if (f.irregular) {
+      return ins('warn', '⚠', 'Os intervalos entre observações são <b>irregulares</b> (mediana de ' +
+        num(f.medianaDias, 1) + ' dias, com dispersão alta). Tratei como <b>' + f.rot +
+        '</b> para anualizar, mas a anualização de uma série irregular é aproximação, não medida.');
+    }
+    return ins('info', 'ⓘ', 'Frequência medida pelo espaçamento entre as datas: <b>' + f.rot +
+      '</b> (' + f.ppa + ' períodos por ano). É esse número que anualiza a volatilidade e o Sharpe — ele não foi suposto.');
+  }
+
+  /* =========================================================
+     RETORNO E RISCO
+     ========================================================= */
+  AG.renderers.finrisco = function (body, ds, plan, question) {
+    const s = serieDoPlano(ds, plan);
+    const rfAno = taxaLivre(plan);
+    const r = F.resumo(s.datas, s.valores, { rfAno: rfAno });
+    const fmt = (plan.measure && plan.measure.format) || s.colMedida.format;
+
+    head(body, 'Retorno e risco de ' + s.colMedida.label,
+      dia(r.inicio) + ' a ' + dia(r.fim) + ' · ' + r.n + ' observações · ' +
+      (r.freq ? r.freq.rot : 'frequência indefinida') + ' · ' + num(r.anos, 1) + ' anos');
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Retorno acumulado', pct(r.acumulado, 1),
+        AG.fmtCompact(r.primeiro, fmt) + ' → ' + AG.fmtCompact(r.ultimo, fmt)),
+      U().kpi('Retorno anualizado', r.cagr === null ? '—' : pct(r.cagr, 1),
+        r.cagr === null ? 'período curto demais para anualizar' : 'taxa composta (CAGR)'),
+      U().kpi('Volatilidade', r.vol === null ? '—' : pct(r.vol, 1),
+        r.freq ? 'anualizada com √' + r.freq.ppa : 'sem frequência, sem anualização'),
+      U().kpi('Perda máxima', r.drawdown ? pct(r.drawdown.max, 1) : '—',
+        r.drawdown ? dia(r.drawdown.inicio) + ' → ' + dia(r.drawdown.fundo) : '')
+    ]));
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Sharpe', r.sharpe === null ? '—' : num(r.sharpe, 2),
+        rfAno ? 'sobre CDI de ' + pct(rfAno, 1) + ' a.a.' : 'taxa livre de risco = 0'),
+      U().kpi('Sortino', r.sortino === null ? '—' : num(r.sortino, 2), 'só a volatilidade das quedas'),
+      U().kpi('VaR 95%', r.var ? pct(r.var.historico, 1) : '—',
+        r.var ? 'histórico · CVaR ' + pct(r.var.cvar, 1) : 'amostra pequena'),
+      U().kpi('Períodos positivos', r.totalRets ? pct(r.positivos / r.totalRets, 0) : '—',
+        r.positivos + ' de ' + r.totalRets)
+    ]));
+
+    body.appendChild(U().insightNode(notaFreq(r)));
+    if (s.convencao !== 'unica') body.appendChild(U().insightNode(ins('info', 'ⓘ', s.nota)));
+
+    /* --- a série --- */
+    const g = grao(r.freq);
+    const pontos = s.datas.map((d, i) => ({ label: rot(d, g), value: s.valores[i], date: d }));
+    const c1 = charts.card({
+      title: s.colMedida.label, subtitle: 'série observada',
+      tableData: {
+        columns: [{ key: 'label', label: 'Data' }, { key: 'value', label: s.colMedida.label, format: fmt },
+          { key: 'ret', label: 'Retorno', format: 'percent' }],
+        rows: pontos.map((p, i) => ({ label: p.label, value: p.value, ret: i === 0 ? null : r.retornos[i - 1] }))
+      }
+    });
+    charts.renderInto(c1.body, (w) => charts.timeChart({ width: w, data: pontos, format: fmt, type: 'line', height: 260 }));
+    body.appendChild(c1.wrap);
+
+    /* --- submerso: onde a série esteve abaixo do topo anterior --- */
+    if (r.drawdown && r.drawdown.curva) {
+      const sub = s.datas.map((d, i) => ({ label: rot(d, g), value: r.drawdown.curva[i] }));
+      const c2 = charts.card({
+        title: 'Quanto tempo abaixo do topo anterior',
+        subtitle: 'zero é topo histórico; o fundo do vale é a perda máxima'
+      });
+      charts.renderInto(c2.body, (w) => charts.timeChart({ width: w, data: sub, format: 'percent', type: 'area', height: 200 }));
+      body.appendChild(c2.wrap);
+    }
+
+    /* --- leituras --- */
+    const lidas = [];
+    if (r.drawdown) {
+      lidas.push(r.drawdown.recuperado
+        ? ins('good', '✓', 'A maior queda foi de <b>' + pct(r.drawdown.max, 1) + '</b> e <b>foi recuperada</b>: ' +
+          r.drawdown.diasAteRecuperar + ' dias do topo até voltar ao topo, sendo ' + r.drawdown.diasAteFundo + ' de descida.')
+        : ins('warn', '⚠', 'A maior queda foi de <b>' + pct(r.drawdown.max, 1) + '</b> e <b>ainda não foi recuperada</b> — a série segue abaixo do topo de ' +
+          dia(r.drawdown.inicio) + '. Retorno acumulado positivo com drawdown aberto significa que o ganho veio antes da queda.'));
+    }
+    if (r.vol !== null && r.cagr !== null) {
+      const razao = r.vol > 0 ? r.cagr / r.vol : null;
+      if (razao !== null) {
+        lidas.push(ins(razao >= 0.5 ? 'good' : razao <= 0 ? 'crit' : 'info', razao >= 0.5 ? '✓' : 'ⓘ',
+          'Cada ponto de retorno anualizado veio acompanhado de <b>' + num(r.vol / Math.abs(r.cagr || 1e-9), 1) +
+          '</b> pontos de volatilidade.' + (rfAno ? '' : ' Sem informar o CDI, o Sharpe acima compara contra zero — o que superestima o prêmio de qualquer ativo brasileiro.')));
+      }
+    }
+    if (r.var && r.var.cvar > r.var.historico * 1.3) {
+      lidas.push(ins('warn', '⚠', 'A cauda é mais pesada que o VaR sugere: nos piores 5% dos períodos a perda média foi <b>' +
+        pct(r.var.cvar, 1) + '</b>, contra os ' + pct(r.var.historico, 1) + ' do VaR. Dimensionar risco pelo VaR sozinho subestima o dia ruim.'));
+    }
+    if (r.pior && r.melhor) {
+      lidas.push(ins('info', 'ⓘ', 'Pior período: <b>' + pct(r.pior.valor, 1) + '</b> em ' + dia(r.pior.data) +
+        '. Melhor: <b>' + pct(r.melhor.valor, 1) + '</b> em ' + dia(r.melhor.data) + '.'));
+    }
+    if (r.anos < 1) {
+      lidas.push(ins('warn', '⚠', 'A série cobre menos de um ano (' + num(r.anos, 1) +
+        '). Volatilidade e Sharpe anualizados a partir de um período curto são instáveis: leia como ordem de grandeza.'));
+    }
+    for (const i of lidas) body.appendChild(U().insightNode(i));
+
+    foot(body, question, plan, ds, fakeRes(plan, ds, s.linhas));
+  };
+
+  /** Taxa livre de risco declarada na própria pergunta ("cdi de 10%"). */
+  function taxaLivre(plan) {
+    const q = AG.norm(plan.question || '');
+    const m = /(cdi|selic|livre de risco|taxa base)[^0-9]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*%/.exec(q);
+    if (m) return parseFloat(m[2].replace(',', '.')) / 100;
+    return null;
+  }
+
+  /* =========================================================
+     RELAÇÃO COM UM ÍNDICE
+     ========================================================= */
+  AG.renderers.finbeta = function (body, ds, plan, question) {
+    const cd = colunaData(ds, plan);
+    if (!cd) throw new Error('sem coluna de data não há como parear duas séries');
+    const medidas = ds.columns.filter((c) => c.role === 'measure' && !c.virtual);
+    if (medidas.length < 2) {
+      throw new Error('beta exige duas séries na mesma base: o ativo e o índice. Esta fonte tem ' +
+        medidas.length + ' coluna numérica — carregue o índice como uma segunda coluna ou cruze as bases antes.');
+    }
+    const alvo = (plan.measures && plan.measures[0]) ? ds.columns.find((c) => c.key === plan.measures[0].column) : colunaMedida(ds, plan);
+    const ref = escolheIndice(medidas, alvo, plan);
+    const sA = serieDoPlano(ds, Object.assign({}, plan, { measure: { column: alvo.key, format: alvo.format } }));
+    const sB = serieDoPlano(ds, Object.assign({}, plan, { measure: { column: ref.key, format: ref.format } }));
+    const par = F.parear({ datas: sA.datas, valores: sA.valores }, { datas: sB.datas, valores: sB.valores });
+    if (par.casados < 4) throw new Error('só ' + par.casados + ' datas em comum entre as duas séries');
+
+    const rA = F.retornos(par.a), rB = F.retornos(par.b);
+    const b = F.beta(rA, rB);
+    if (!b) throw new Error('o índice não varia o suficiente para estimar beta');
+    const freq = F.frequencia(par.datas);
+    const volA = freq ? F.volatilidade(rA, freq.ppa) : null;
+    const volB = freq ? F.volatilidade(rB, freq.ppa) : null;
+
+    head(body, 'Beta de ' + alvo.label + ' contra ' + ref.label,
+      par.casados + ' datas pareadas · ' + (freq ? freq.rot : 'frequência indefinida') +
+      ' · pareamento por data, nunca por posição');
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Beta', num(b.beta, 2), b.beta > 1 ? 'amplifica o índice' : b.beta < 0 ? 'move-se ao contrário' : 'amortece o índice'),
+      U().kpi('Correlação', num(b.r, 2), 'r de Pearson entre os retornos'),
+      U().kpi('Variação explicada', pct(b.r * b.r, 0), 'r² — o resto é risco próprio'),
+      U().kpi('Volatilidade', volA === null ? '—' : pct(volA, 1),
+        volB === null ? '' : 'índice: ' + pct(volB, 1))
+    ]));
+
+    const c = charts.card({
+      title: 'Retorno do ativo × retorno do índice',
+      subtitle: 'cada ponto é um período; a inclinação da nuvem é o beta'
+    });
+    const xs = [], ys = [];
+    for (let i = 0; i < rA.length; i++) {
+      if (typeof rA[i] !== 'number' || typeof rB[i] !== 'number' || !isFinite(rA[i]) || !isFinite(rB[i])) continue;
+      xs.push(rB[i]); ys.push(rA[i]);
+    }
+    charts.renderInto(c.body, (w) => charts.scatter({
+      width: w, height: 320, xs: xs, ys: ys,
+      xLabel: ref.label + ' (retorno)', yLabel: alvo.label + ' (retorno)',
+      xFormat: 'percent', yFormat: 'percent', format: 'percent',
+      reg: { a: b.alfa, b: b.beta }        // a reta desenhada É o beta, não um ajuste à parte
+    }));
+    body.appendChild(c.wrap);
+
+    const r2 = b.r * b.r;
+    body.appendChild(U().insightNode(ins(r2 >= 0.5 ? 'info' : 'warn', r2 >= 0.5 ? 'ⓘ' : '⚠',
+      r2 >= 0.5
+        ? 'O índice explica <b>' + pct(r2, 0) + '</b> do movimento. O beta de ' + num(b.beta, 2) + ' tem sentido prático: em um mês de −10% no índice, a expectativa é <b>' + pct(b.beta * -0.10, 1) + '</b> no ativo.'
+        : 'O índice explica só <b>' + pct(r2, 0) + '</b> do movimento, então <b>o beta explica pouco</b>. Um beta calculado sobre correlação fraca é um número correto que não descreve nada — o risco aqui é predominantemente próprio do ativo, não do mercado.')));
+    if (par.casados < par.deA * 0.7) {
+      body.appendChild(U().insightNode(ins('warn', '⚠', 'Só <b>' + par.casados + '</b> das ' + par.deA +
+        ' datas do ativo têm par no índice. Datas sem par foram descartadas — se o índice tem calendário diferente, alinhe antes de concluir.')));
+    }
+    foot(body, question, plan, ds, fakeRes(plan, ds, par.casados));
+  };
+
+  function escolheIndice(medidas, alvo, plan) {
+    const q = AG.norm(plan.question || '');
+    const nomeado = medidas.find((c) => c.key !== alvo.key && q.indexOf(AG.norm(c.label)) >= 0);
+    if (nomeado) return nomeado;
+    const tipico = medidas.find((c) => c.key !== alvo.key && /(ibov|indice|índice|benchmark|cdi|ifix|mercado|carteira teorica)/i.test(c.label));
+    return tipico || medidas.find((c) => c.key !== alvo.key);
+  }
+
+  /* =========================================================
+     VALOR REAL
+     ========================================================= */
+  AG.renderers.finreal = function (body, ds, plan, question) {
+    const s = serieDoPlano(ds, plan);
+    const idx = achaIndicePrecos(ds, plan, s);
+    if (!idx) {
+      throw new Error('não achei uma série de índice de preços nesta fonte. ' +
+        'Para deflacionar, carregue o IPCA (ou IGP-M/INPC) como uma coluna com as mesmas datas — ' +
+        'o número índice, ou a variação mensal em %, que eu encadeio. O painel Fontes públicas traz o caminho do download.');
+    }
+    const def = F.deflacionar(s.datas, s.valores, idx.datas, idx.valores);
+    if (!def) throw new Error('o índice de preços não tem valor válido na data-base');
+    const fmt = (plan.measure && plan.measure.format) || s.colMedida.format;
+
+    const nomAcum = s.valores[s.valores.length - 1] / s.valores[0] - 1;
+    const vr = def.valores.filter((v) => v !== null);
+    const realAcum = vr.length > 1 ? vr[vr.length - 1] / vr[0] - 1 : null;
+    const inflacao = realAcum === null ? null : (1 + nomAcum) / (1 + realAcum) - 1;
+
+    head(body, s.colMedida.label + ' em valores reais',
+      dia(s.datas[0]) + ' a ' + dia(s.datas[s.datas.length - 1]) + ' · deflacionado por <b>' +
+      AG.esc(idx.rotulo) + '</b> · a preços de ' + dia(s.datas[s.datas.length - 1]));
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Variação nominal', pct(nomAcum, 1), 'o que o número mostra'),
+      U().kpi('Variação real', realAcum === null ? '—' : pct(realAcum, 1), 'descontada a inflação do período'),
+      U().kpi('Inflação no período', inflacao === null ? '—' : pct(inflacao, 1), idx.rotulo + ' acumulado'),
+      U().kpi('Meses cobertos', def.cobertos + ' de ' + s.datas.length,
+        def.faltando ? def.faltando + ' sem índice' : 'cobertura completa')
+    ]));
+
+    const gr = grao(F.frequencia(s.datas));
+    const pontos = s.datas.map((d, i) => ({
+      label: rot(d, gr), value: s.valores[i], value2: def.valores[i]
+    }));
+    const c = charts.card({
+      title: 'Nominal × real', subtitle: 'a linha real está em poder de compra da última data',
+      tableData: {
+        columns: [{ key: 'label', label: 'Período' },
+          { key: 'value', label: 'Nominal', format: fmt },
+          { key: 'value2', label: 'Real', format: fmt }],
+        rows: pontos
+      }
+    });
+    const sNom = pontos.map((p) => ({ label: p.label, value: p.value }));
+    const sReal = pontos.map((p) => ({ label: p.label, value: p.value2 }));
+    charts.renderInto(c.body, (w) => charts.timeChart({
+      width: w, height: 300, format: fmt, type: 'line', data: sNom,
+      series: [
+        { key: 'nominal', points: sNom, color: AG.PALETTE[1] },
+        { key: 'real (a preços de ' + dia(s.datas[s.datas.length - 1]) + ')', points: sReal, color: AG.PALETTE[0] }
+      ]
+    }));
+    c.wrap.appendChild(charts.legend([
+      { label: 'nominal', color: AG.PALETTE[1] },
+      { label: 'real', color: AG.PALETTE[0] }
+    ]));
+    body.appendChild(c.wrap);
+
+    if (realAcum !== null) {
+      const virou = nomAcum > 0 && realAcum < 0;
+      body.appendChild(U().insightNode(ins(virou ? 'crit' : 'info', virou ? '✕' : 'ⓘ',
+        virou
+          ? 'Em termos nominais a série <b>subiu ' + pct(nomAcum, 1) + '</b>; em termos reais <b>caiu ' +
+            pct(Math.abs(realAcum), 1) + '</b>. A alta era inflação, não crescimento — e é essa a leitura que vale para decisão.'
+          : 'Dos ' + pct(nomAcum, 1) + ' nominais, <b>' + pct(realAcum, 1) +
+            '</b> são ganho real e o restante é recomposição de preços.')));
+    }
+    if (def.faltando) {
+      body.appendChild(U().insightNode(ins('warn', '⚠', '<b>' + def.faltando +
+        '</b> período(s) ficaram sem índice de preços e saíram do cálculo real — o gráfico mostra a lacuna em vez de interpolar.')));
+    }
+    foot(body, question, plan, ds, fakeRes(plan, ds, s.linhas));
+  };
+
+  /**
+   * Procura o índice de preços na própria base: uma coluna de número índice
+   * ou uma de variação mensal em %, que é como o IPCA é publicado.
+   */
+  function achaIndicePrecos(ds, plan, s) {
+    const cands = ds.columns.filter((c) => c.role === 'measure' && !c.virtual && c.key !== s.colMedida.key);
+    const nome = /(ipca|igp|inpc|inflacao|infla[çc][ãa]o|indice de preco|índice de preço|deflator)/i;
+    const alvo = cands.find((c) => nome.test(c.label)) || cands.find((c) => nome.test(c.key));
+    if (!alvo) return null;
+    const cd = colunaData(ds, plan);
+    const rows = engine.applyFilters(ds, plan);
+    const m = new Map();
+    for (const r of rows) {
+      const d = r[cd.key], v = r[alvo.key];
+      const t = emMs(d);
+      if (typeof t !== 'number' || !isFinite(t) || typeof v !== 'number' || !isFinite(v)) continue;
+      m.set(t, v);
+    }
+    const ts = Array.from(m.keys()).sort((a, b) => a - b);
+    if (ts.length < 2) return null;
+    const vals = ts.map((t) => m.get(t));
+    // variação mensal (valores pequenos, positivos e negativos) vira número índice
+    const parecemVariacao = vals.every((v) => Math.abs(v) < 25) && vals.some((v) => Math.abs(v) < 5);
+    const valores = parecemVariacao ? F.indiceDeVariacoes(vals, true) : vals;
+    return {
+      datas: ts, valores: valores,
+      rotulo: alvo.label + (parecemVariacao ? ' (variação % encadeada em número índice)' : '')
+    };
+  }
+
+  /* =========================================================
+     LIMITES DA LRF
+     ========================================================= */
+  const RCL_RE = /(\brcl\b|receita corrente liquida|receita corrente líquida)/i;
+  const PESSOAL_RE = /(despesa.{0,12}pessoal|gasto.{0,12}pessoal|\bdtp\b|pessoal e encargos)/i;
+  const DIVIDA_RE = /(divida consolidada|dívida consolidada|\bdcl\b|divida liquida|endividamento)/i;
+
+  AG.renderers.finlrf = function (body, ds, plan, question) {
+    const acha = (re) => ds.columns.find((c) => c.role === 'measure' && !c.virtual && (re.test(c.label) || re.test(c.key)));
+    const cRCL = acha(RCL_RE);
+    const cPes = acha(PESSOAL_RE);
+    const cDiv = acha(DIVIDA_RE);
+    if (!cRCL) {
+      throw new Error('não achei a Receita Corrente Líquida nesta fonte. Os limites da LRF são todos percentuais da RCL — ' +
+        'sem ela não há limite a calcular. No RREO ela vem no Anexo 3; no RGF, no quadro da despesa com pessoal.');
+    }
+    if (!cPes && !cDiv) {
+      throw new Error('achei a RCL, mas nenhuma despesa de pessoal nem dívida consolidada para comparar com ela.');
+    }
+
+    const cd = colunaData(ds, plan);
+    const rows = engine.applyFilters(ds, plan);
+    const soma = (col) => rows.reduce((a, r) => a + (typeof r[col.key] === 'number' && isFinite(r[col.key]) ? r[col.key] : 0), 0);
+    // uma linha por período: a RCL não se soma entre períodos, usa-se a última
+    const porPeriodo = cd ? agrupaPorPeriodo(rows, cd, [cRCL, cPes, cDiv].filter(Boolean)) : null;
+    const ultimo = porPeriodo && porPeriodo.length ? porPeriodo[porPeriodo.length - 1] : null;
+    const rcl = ultimo ? ultimo.vals[cRCL.key] : soma(cRCL);
+    const esfera = /estad/i.test(ds.name) ? 'estado' : 'municipio';
+    const L = F.LRF;
+
+    head(body, 'Limites da Lei de Responsabilidade Fiscal',
+      (ultimo ? 'posição de <b>' + AG.esc(ultimo.rotulo) + '</b>' : 'posição consolidada') +
+      ' · RCL de ' + AG.fmtCompact(rcl, 'currency') +
+      ' · limites de ' + (esfera === 'estado' ? 'Estado' : 'Município') + ' (LC 101/2000 e Res. SF 40/2001)');
+
+    const linhas = [];
+    if (cPes) {
+      const v = ultimo ? ultimo.vals[cPes.key] : soma(cPes);
+      linhas.push(faixa('Despesa com pessoal — Executivo', v, rcl, L.pessoal[esfera].executivo, cPes.label));
+      linhas.push(faixa('Despesa com pessoal — total do ente', v, rcl, L.pessoal[esfera].limite, cPes.label));
+    }
+    if (cDiv) {
+      const v = ultimo ? ultimo.vals[cDiv.key] : soma(cDiv);
+      linhas.push(faixa('Dívida consolidada líquida', v, rcl, L.dividaConsolidada[esfera], cDiv.label));
+    }
+
+    body.appendChild(el('div', { class: 'kpis' }, linhas.slice(0, 4).map((x) =>
+      U().kpi(x.titulo.replace(' — ', ' · '), pct(x.r.percentual, 2),
+        'limite ' + pct(x.r.limite, 0) + ' · ' + rotFaixa(x.r.faixa)))));
+
+    const td = {
+      columns: [{ key: 'ind', label: 'Indicador' }, { key: 'pct', label: '% da RCL', format: 'percent' },
+        { key: 'lim', label: 'Limite', format: 'percent' }, { key: 'uso', label: 'Uso do limite', format: 'percent' },
+        { key: 'folga', label: 'Folga em R$', format: 'currency' }, { key: 'sit', label: 'Situação' }],
+      rows: linhas.map((x) => ({
+        ind: x.titulo, pct: x.r.percentual, lim: x.r.limite, uso: x.r.uso,
+        folga: x.r.folga, sit: rotFaixa(x.r.faixa)
+      }))
+    };
+    const tabela = charts.card({
+      title: 'Posição contra cada limite',
+      subtitle: 'alerta a 90% do limite, prudencial a 95% — as duas fronteiras são da própria lei',
+      tableData: td
+    });
+    // aqui a tabela É a resposta: fica visível, não atrás do botão "Só tabela"
+    tabela.body.appendChild(charts.dataTable(td));
+    body.appendChild(tabela.wrap);
+
+    for (const x of linhas) {
+      if (x.r.faixa === 'dentro') continue;
+      body.appendChild(U().insightNode(ins(
+        x.r.faixa === 'estourado' ? 'crit' : x.r.faixa === 'prudencial' ? 'warn' : 'info',
+        x.r.faixa === 'estourado' ? '✕' : '⚠',
+        '<b>' + AG.esc(x.titulo) + '</b>: ' + pct(x.r.percentual, 2) + ' da RCL, ou <b>' + pct(x.r.uso, 0) +
+        ' do limite</b>. ' + (x.r.faixa === 'estourado'
+          ? 'Acima do limite legal — prazo de recondução de dois quadrimestres, com vedações do art. 23.'
+          : x.r.faixa === 'prudencial'
+            ? 'Faixa prudencial (art. 22, parágrafo único): vedados aumento de despesa com pessoal, criação de cargo, admissão e hora extra.'
+            : 'Faixa de alerta (art. 59, §1º, II): o Tribunal de Contas emite alerta ao ente.'))));
+    }
+
+    /* --- evolução do comprometimento, quando há série --- */
+    if (porPeriodo && porPeriodo.length >= 3 && cPes) {
+      const pts = porPeriodo.map((p) => ({
+        label: p.rotulo,
+        value: p.vals[cRCL.key] > 0 ? p.vals[cPes.key] / p.vals[cRCL.key] : null
+      }));
+      // o limite entra como série constante: uma linha reta ao lado da curva
+      // diz mais que um número no texto — dá para ver a distância encurtando
+      const lim = pts.map((p) => ({ label: p.label, value: L.pessoal[esfera].executivo }));
+      const c = charts.card({
+        title: 'Comprometimento da RCL com pessoal, período a período',
+        subtitle: 'a reta é o limite de ' + pct(L.pessoal[esfera].executivo, 0) + ' do Executivo'
+      });
+      charts.renderInto(c.body, (w) => charts.timeChart({
+        width: w, height: 260, format: 'percent', type: 'line', data: pts,
+        series: [
+          { key: 'pessoal / RCL', points: pts, color: AG.PALETTE[0] },
+          { key: 'limite legal', points: lim, color: AG.PALETTE[3] }
+        ]
+      }));
+      c.wrap.appendChild(charts.legend([
+        { label: 'pessoal / RCL', color: AG.PALETTE[0] },
+        { label: 'limite legal', color: AG.PALETTE[3] }
+      ]));
+      body.appendChild(c.wrap);
+    }
+
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Os percentuais vêm da lei, não de convenção: pessoal em <b>' + pct(L.pessoal[esfera].limite, 0) +
+      '</b> do ente (' + pct(L.pessoal[esfera].executivo, 0) + ' do Executivo) e dívida consolidada em <b>' +
+      pct(L.dividaConsolidada[esfera], 0) + '</b> da RCL. Confira se a apuração da fonte usa RCL dos <b>últimos 12 meses</b> — ' +
+      'é a definição do art. 2º, IV, e trocar por RCL do exercício muda todo o percentual.')));
+
+    foot(body, question, plan, ds, fakeRes(plan, ds, rows.length));
+  };
+
+  function faixa(titulo, valor, rcl, limite, origem) {
+    return { titulo, origem, r: F.limiteLRF(valor, rcl, limite) || { percentual: null, limite, uso: null, faixa: 'dentro', folga: null } };
+  }
+  const rotFaixa = (f) => ({ dentro: 'dentro do limite', alerta: 'alerta (90%)', prudencial: 'prudencial (95%)', estourado: 'acima do limite' }[f] || f);
+
+  function agrupaPorPeriodo(rows, cd, cols) {
+    const m = new Map();
+    for (const r of rows) {
+      const k = emMs(r[cd.key]);
+      if (typeof k !== 'number' || !isFinite(k)) continue;
+      if (!m.has(k)) m.set(k, { t: k, vals: {} });
+      const e = m.get(k);
+      for (const c of cols) {
+        const v = r[c.key];
+        if (typeof v === 'number' && isFinite(v)) e.vals[c.key] = (e.vals[c.key] || 0) + v;
+      }
+    }
+    const ord = Array.from(m.values()).sort((a, b) => a.t - b.t);
+    const g = grao(F.frequencia(ord.map((e) => e.t)));
+    return ord.map((e) => ({ rotulo: AG.fmtDate(e.t, g), vals: e.vals, t: e.t }));
+  }
+
+  /* =========================================================
+     INDICADORES CONTÁBEIS
+     ========================================================= */
+  const MAPA_DFP = [
+    ['receita', /(receita (liquida|l[íi]quida|de venda|operacional)|faturamento|receita total)/i],
+    ['lucroBruto', /(lucro bruto|resultado bruto)/i],
+    ['ebit', /(ebit\b|resultado operacional|lucro operacional)/i],
+    ['ebitda', /(ebitda|lajida)/i],
+    ['lucroLiquido', /(lucro l[íi]quido|resultado l[íi]quido|lucro do (exerc|per))/i],
+    ['ativoCirculante', /(ativo circulante)/i],
+    ['ativoTotal', /(ativo total|total do ativo)/i],
+    ['passivoCirculante', /(passivo circulante)/i],
+    ['passivoTotal', /(passivo total|total do passivo|passivo exig)/i],
+    ['patrimonioLiquido', /(patrim[oô]nio l[íi]quido|\bpl\b)/i],
+    ['estoques', /(estoque)/i],
+    ['dividaLiquida', /(d[íi]vida l[íi]quida)/i]
+  ];
+  const ROT = {
+    margemBruta: ['Margem bruta', 'percent'], margemOperacional: ['Margem operacional', 'percent'],
+    margemLiquida: ['Margem líquida', 'percent'], liquidezCorrente: ['Liquidez corrente', 'ratio'],
+    liquidezSeca: ['Liquidez seca', 'ratio'], endividamento: ['Endividamento (passivo/ativo)', 'percent'],
+    alavancagem: ['Alavancagem (dívida/EBITDA)', 'ratio'], roe: ['ROE', 'percent'],
+    roa: ['ROA', 'percent'], giro: ['Giro do ativo', 'ratio']
+  };
+
+  AG.renderers.finindic = function (body, ds, plan, question) {
+    const achado = {};
+    for (const [campo, re] of MAPA_DFP) {
+      const c = ds.columns.find((x) => x.role === 'measure' && !x.virtual && (re.test(x.label) || re.test(x.key)));
+      if (c) achado[campo] = c;
+    }
+    const nAchados = Object.keys(achado).length;
+    if (nAchados < 2) {
+      throw new Error('não reconheci contas de demonstração financeira nesta fonte. ' +
+        'Procuro colunas como receita líquida, lucro bruto, EBIT/EBITDA, lucro líquido, ativo e passivo circulante, ' +
+        'ativo e passivo total, patrimônio líquido, estoques e dívida líquida — achei ' + nAchados + '.');
+    }
+
+    const cd = colunaData(ds, plan);
+    const rows = engine.applyFilters(ds, plan);
+    const cols = Object.keys(achado).map((k) => achado[k]);
+    const periodos = cd ? agrupaPorPeriodo(rows, cd, cols) : [{ rotulo: 'consolidado', vals: somaTudo(rows, cols) }];
+
+    const calc = periodos.map((p) => {
+      const c = {};
+      for (const campo in achado) c[campo] = p.vals[achado[campo].key];
+      return { rotulo: p.rotulo, ind: F.indicadores(c), bruto: c };
+    });
+    const ult = calc[calc.length - 1];
+    const disponiveis = Object.keys(ROT).filter((k) => ult.ind[k] !== null && ult.ind[k] !== undefined);
+
+    head(body, 'Indicadores contábeis',
+      nAchados + ' contas reconhecidas · ' + periodos.length + ' período(s) · última posição: <b>' +
+      AG.esc(ult.rotulo) + '</b>');
+
+    body.appendChild(el('div', { class: 'kpis' }, disponiveis.slice(0, 4).map((k) => {
+      const anterior = calc.length > 1 ? calc[calc.length - 2].ind[k] : null;
+      const delta = anterior !== null && anterior !== undefined && ult.ind[k] !== null
+        ? ult.ind[k] - anterior : null;
+      return U().kpi(ROT[k][0],
+        ROT[k][1] === 'percent' ? pct(ult.ind[k], 1) : num(ult.ind[k], 2),
+        delta === null ? '' : (delta >= 0 ? '▲ ' : '▼ ') +
+          (ROT[k][1] === 'percent' ? pct(Math.abs(delta), 1) : num(Math.abs(delta), 2)) + ' vs. período anterior');
+    })));
+
+    const tdInd = {
+      columns: [{ key: 'per', label: 'Período' }].concat(disponiveis.map((k) => ({
+        key: k, label: ROT[k][0], format: ROT[k][1] === 'percent' ? 'percent' : 'number'
+      }))),
+      rows: calc.map((x) => Object.assign({ per: x.rotulo }, x.ind))
+    };
+    const c = charts.card({
+      title: 'Indicadores por período',
+      subtitle: 'calculados sobre as contas reconhecidas nesta fonte',
+      tableData: tdInd
+    });
+    c.body.appendChild(charts.dataTable(tdInd));
+    body.appendChild(c.wrap);
+
+    const lidas = [];
+    if (ult.ind.liquidezCorrente !== null && ult.ind.liquidezCorrente < 1) {
+      lidas.push(ins('warn', '⚠', 'Liquidez corrente abaixo de 1 (<b>' + num(ult.ind.liquidezCorrente, 2) +
+        '</b>): o circulante não cobre as obrigações de curto prazo pelo balanço.'));
+    }
+    if (ult.ind.alavancagem !== null && ult.ind.alavancagem > 3) {
+      lidas.push(ins('warn', '⚠', 'Dívida líquida em <b>' + num(ult.ind.alavancagem, 1) +
+        '×</b> o EBITDA. Acima de 3× é onde covenants bancários costumam ser escritos.'));
+    }
+    if (ult.ind.margemLiquida !== null && ult.ind.margemLiquida < 0) {
+      lidas.push(ins('crit', '✕', 'Margem líquida negativa no último período (<b>' + pct(ult.ind.margemLiquida, 1) + '</b>).'));
+    }
+    lidas.push(ins('info', 'ⓘ', 'Os indicadores saem das contas que <b>existem nesta fonte</b> — o que não foi reconhecido não vira estimativa. ' +
+      'Confira se os valores estão na mesma unidade (DFP da CVM publica em milhares de reais) antes de comparar com outra base.'));
+    for (const i of lidas) body.appendChild(U().insightNode(i));
+
+    foot(body, question, plan, ds, fakeRes(plan, ds, rows.length));
+  };
+
+  function somaTudo(rows, cols) {
+    const out = {};
+    for (const c of cols) {
+      let s = 0, achou = false;
+      for (const r of rows) { const v = r[c.key]; if (typeof v === 'number' && isFinite(v)) { s += v; achou = true; } }
+      if (achou) out[c.key] = s;
+    }
+    return out;
+  }
+
+  AG.finUI = { serieDoPlano, achaIndicePrecos };
 })();
 
 </script>
