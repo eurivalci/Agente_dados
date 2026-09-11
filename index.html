@@ -3415,6 +3415,55 @@ const RECEITAS_ARQUIVO = [
       "Traga o arquivo e pergunte \"limite de gastos com pessoal pela LRF\"."],
     alternativa:"A API do SICONFI responde ao navegador e já está no catálogo — mas os endpoints de RREO/RGF exigem exercício, período e código do ente." },
 
+  /* --- fundos: CVM, ANBIMA e CADPREV ---------------------------------
+     Estas entradas são RECEITAS DE ARQUIVO, não fontes de catálogo: o
+     catálogo só aceita entrada com auditoria de CORS feita e datada, e
+     nenhuma destas foi auditada no navegador. Dizer "API direta" sem ter
+     testado seria inventar uma promessa — aqui o caminho é o download. */
+  { id:"fa-cvm-fi-diario", titulo:"Informe diário de fundos (cota e patrimônio)",
+    org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
+    portal:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
+    desc:"A base canônica para comparar fundos: uma linha por fundo por dia útil, com CNPJ, valor da cota, patrimônio líquido, captação, resgate e número de cotistas. A cota já vem líquida de taxa de administração — o que você compara é o que o cotista recebeu.",
+    passos:[
+      "Baixe o CSV do mês desejado (um arquivo por competência).",
+      "Filtre os CNPJs que interessam ANTES de trazer: o arquivo mensal tem milhões de linhas e cobre o mercado inteiro.",
+      "Para comparar vários meses, junte os arquivos do período num CSV só.",
+      "Traga e pergunte \"comparar os fundos contra o CDI\" — o agente detecta o formato sozinho."],
+    alternativa:"Para saber o nome, a classe, o gestor e a taxa de cada CNPJ, baixe também o cadastro (dataset fi-cad) e cruze pelo CNPJ na aba Cruzar bases." },
+
+  { id:"fa-cvm-fi-cad", titulo:"Cadastro de fundos (nome, classe, gestor, taxa)",
+    org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
+    portal:"https://dados.cvm.gov.br/dataset/fi-cad",
+    desc:"O de-para do CNPJ: denominação social, classe, situação, data de início, administrador, gestor, taxa de administração e de performance. É o que transforma um ranking de 14 dígitos num ranking legível.",
+    passos:[
+      "Baixe o CSV do cadastro (arquivo único, atualizado diariamente).",
+      "Cruze com o informe diário pelo CNPJ — o agente detecta a chave sozinho na aba Cruzar bases.",
+      "Com o nome na base, o comparador passa a rotular cada série pelo fundo, não pelo CNPJ.",
+      "Com a taxa de administração junto, dá para perguntar o que ela explica do retorno entregue."],
+    alternativa:"A situação cadastral (em funcionamento, cancelado, liquidação) é o que permite ver o viés de sobrevivência de frente: fundo cancelado some das comparações de mercado sem aviso." },
+
+  { id:"fa-cadprev-dair", titulo:"Carteira de um RPPS (DAIR)",
+    org:"Ministério da Previdência — CADPREV", dom:"fiscal", usa:"fincarteira",
+    portal:"https://cadprev.previdencia.gov.br/",
+    desc:"O Demonstrativo de Aplicações e Investimentos dos Recursos: fundo a fundo, com CNPJ, segmento, valor aplicado e rentabilidade declarada. É a carteira como ela é reportada ao órgão.",
+    passos:[
+      "No CADPREV, consulte o DAIR do ente e do período desejados.",
+      "Exporte em CSV ou XLSX a relação de aplicações.",
+      "Traga e pergunte \"composição da carteira e enquadramento\" — sai concentração por fundo, segmento e gestor, com os limites da Resolução CMN.",
+      "Para comparar o DESEMPENHO desses fundos, baixe o informe diário da CVM com os mesmos CNPJs."],
+    alternativa:"A API do CADPREV está no catálogo, mas foi auditada em 05/09/2026 com CORS negado: pelo navegador, é download." },
+
+  { id:"fa-anbima", titulo:"Índices de referência da ANBIMA (IMA, IHFA, IDkA)",
+    org:"ANBIMA", dom:"setorial", usa:"fincompara",
+    portal:"https://www.anbima.com.br/pt_br/informar/",
+    desc:"Os benchmarks que fazem sentido para renda fixa brasileira: IMA-B (títulos indexados ao IPCA), IRF-M (prefixados), IMA-Geral e IHFA (multimercados). Comparar um fundo de renda fixa longa contra o CDI é comparar contra o benchmark errado — a diferença aparece como habilidade e é só duração.",
+    passos:[
+      "Na área de informações de mercado, baixe a série histórica do índice desejado.",
+      "Deixe a série do índice como uma coluna ou como uma \"entidade\" a mais na base de cotas.",
+      "Pergunte \"comparar os fundos contra o IMA-B\" — o agente usa o índice nomeado como referência, não como filtro.",
+      "Para meta atuarial, carregue junto o IPCA e diga a taxa: \"fundos contra IPCA + 5%\"."],
+    alternativa:"A ANBIMA tem API para associados e cadastrados, com credencial própria. Como qualquer chave, ela não deve viver em código de navegador — por isso aqui o caminho é o arquivo." },
+
   { id:"fa-corretora", titulo:"O extrato da sua própria corretora",
     org:"Sua corretora", dom:"setorial", usa:"finrisco", portal:"",
     desc:"O caminho mais curto para analisar a carteira que é sua de verdade: quase toda corretora exporta posição e histórico em CSV ou XLSX.",
@@ -4145,6 +4194,8 @@ const RECEITAS_ARQUIVO = [
     { intent: 'boxplot', re: /(boxplot|box plot|caixa e bigode|dispersao por|distribuicao comparada|amplitude por)/ },
     /* --- camada financeira: antes das regras genéricas, porque "risco",
        "retorno" e "real" também aparecem em frases de ranking comum --- */
+    { intent: 'fincarteira', re: /(carteira do rpps|composicao da carteira|enquadramento|resolucao cmn|limites? (da )?cmn|\bdair\b|distribuicao por segmento|concentracao por gestor|quanto (tem|esta) em cada (fundo|segmento))/ },
+    { intent: 'fincompara', re: /(comparar (os )?fundos|comparacao de fundos|comparador de fundos|ranking de fundos|melhores fundos|qual fundo (rende|rendeu|e melhor|foi melhor)|fundos? (que )?(bate[mu]?|superou|superam) o (cdi|benchmark|indice)|desempenho dos fundos|fundos lado a lado|compara[rc].{0,18}(fundos|cotas|gestores))/ },
     { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada|capacidade de pagamento|\bcapag\b)/ },
     { intent: 'finreal', re: /(deflacion|valores? reais|em termos reais|descontada a inflacao|corrigid[oa] pel[oa] (ipca|igp|inpc|inflacao)|a precos de|poder de compra|real vs nominal|nominal vs real|inflacao acumulada|serie real)/ },
     { intent: 'finbeta', re: /(\bbeta\b|correlacao com o (indice|ibovespa|benchmark|mercado)|acompanha o (indice|ibovespa|mercado)|em relacao ao (indice|benchmark|ibovespa)|contra o (indice|benchmark|ibovespa|cdi)|versus o (indice|benchmark|ibovespa))/ },
@@ -4192,7 +4243,8 @@ const RECEITAS_ARQUIVO = [
     scatter: 1, multimeasure: 1,
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
-    finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1 };
+    finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
+    fincompara: 1, fincarteira: 1 };
   /* intenções que sem uma dimensão não têm o que mostrar */
   const NEEDS_DIM = { ranking: 1, distribution: 1, crosstab: 1, pivot: 1, abc: 1, compare: 1,
     movers: 1, contribution: 1, boxplot: 1, indexed: 1, scan: 1, multigroup: 1 };
@@ -9482,6 +9534,443 @@ const RECEITAS_ARQUIVO = [
     drawdown, sharpe, sortino, beta, parear, var: var_, deflacionar,
     indiceDeVariacoes, base100, movel, limiteLRF, LRF, indicadores, resumo,
     DIA: DIA
+  };
+})();
+
+
+/* ==== 74-fundos.js ==== */
+/* ============================================================
+   74 — COMPARAÇÃO DE FUNDOS
+   Comparar fundos é o lugar onde a estatística ingênua mais engana, e por
+   três motivos que este módulo trata explicitamente:
+
+   1. VIÉS DE SOBREVIVÊNCIA. Quem compara só os fundos que chegaram até hoje
+      compara os que deram certo. O fundo que parou de reportar no meio do
+      período não some do cálculo em silêncio: ele é contado e dito.
+   2. JANELAS DIFERENTES NÃO SE COMPARAM. Um fundo com 6 meses e outro com 5
+      anos não entram no mesmo ranking de retorno. O comparador recorta a
+      JANELA COMUM e informa quem ficou de fora e por quê.
+   3. MÚLTIPLAS COMPARAÇÕES. Com 40 fundos, o primeiro colocado parece
+      excelente mesmo que nenhum tenha habilidade nenhuma. Cada fundo é
+      testado contra o benchmark e o conjunto passa por FDR de
+      Benjamini–Hochberg — o que sobrevive é bem menos do que o ranking
+      sugere, e é exatamente esse o ponto.
+   ============================================================ */
+
+(function () {
+  const S = AG.stats;
+  const F = AG.fin;
+  const DIA = 86400000;
+  const msDe = (d) => (d instanceof Date ? d.getTime() : d);
+
+  /* =========================================================
+     FORMATO DOS DADOS — detectado, não perguntado
+     ========================================================= */
+  const COTA_RE = /(cota|quota|vl[_ ]?quota|valor.{0,12}(cota|quota)|nav\b|preco|pre[çc]o|fechamento)/i;
+  const PL_RE = /(patrim[oô]nio|\bpl\b|vl[_ ]?patrim)/i;
+  const ID_RE = /(cnpj|fundo|ativo|papel|nome|denomina|c[oó]digo|ticker|classe|gestor|administrador|segmento)/i;
+
+  /**
+   * Três formatos chegam na prática:
+   * - longo: uma coluna identifica o fundo, outra a data, outra a cota
+   *          (é o informe diário da CVM)
+   * - largo: a data numa coluna e um fundo por coluna numérica
+   *          (é a planilha montada à mão)
+   * - carteira: sem série no tempo, só a posição de cada fundo
+   *          (é o extrato DAIR do CADPREV)
+   */
+  function detectarFormato(ds) {
+    const cols = ds.columns.filter((c) => !c.virtual);
+    const datas = cols.filter((c) => c.role === 'time');
+    const medidas = cols.filter((c) => c.role === 'measure');
+    const dims = cols.filter((c) => c.role === 'dimension' || c.role === 'id' || c.role === 'text');
+
+    if (!datas.length) {
+      return { tipo: 'carteira', colData: null, colId: escolheId(dims), colRotulo: escolheRotulo(dims, escolheId(dims)), medidas: medidas };
+    }
+    const cd = datas[0];
+    const cid = escolheId(dims);
+    const crot = escolheRotulo(dims, cid);
+
+    if (cid) {
+      // longo só vale se a mesma data aparecer para IDs diferentes
+      const amostra = ds.rows.slice(0, Math.min(4000, ds.rows.length));
+      const porData = new Map();
+      let repete = 0;
+      for (const r of amostra) {
+        const t = msDe(r[cd.key]);
+        if (typeof t !== 'number' || !isFinite(t)) continue;
+        const k = r[cid.key];
+        if (!porData.has(t)) porData.set(t, new Set());
+        const s = porData.get(t);
+        if (!s.has(k)) { s.add(k); if (s.size > 1) repete++; }
+      }
+      if (repete > 0) {
+        return { tipo: 'longo', colData: cd, colId: cid, colRotulo: crot, colValor: escolheValor(medidas), medidas: medidas };
+      }
+    }
+    if (medidas.length >= 2) {
+      return { tipo: 'largo', colData: cd, colId: null, colRotulo: null, medidas: medidas };
+    }
+    return { tipo: 'unico', colData: cd, colId: cid, colRotulo: crot, colValor: escolheValor(medidas), medidas: medidas };
+  }
+  function escolheId(dims) {
+    return dims.find((c) => /cnpj/i.test(c.label)) || dims.find((c) => ID_RE.test(c.label)) || dims[0] || null;
+  }
+  /* O CNPJ é o identificador certo (não colide, não muda), mas ninguém lê um
+     ranking de 14 dígitos. Quando existe uma coluna de nome, ela vira o rótulo
+     e o CNPJ continua sendo a chave. */
+  function escolheRotulo(dims, cid) {
+    const nome = dims.find((c) => c !== cid && /(fundo|denomina|nome|raz[ãa]o|ativo|papel|descri)/i.test(c.label));
+    return nome || null;
+  }
+  function escolheValor(medidas) {
+    return medidas.find((c) => COTA_RE.test(c.label)) || medidas.find((c) => !PL_RE.test(c.label)) || medidas[0] || null;
+  }
+
+  /**
+   * Converte qualquer um dos formatos numa lista de séries por entidade.
+   * O formato largo vira longo aqui — uma coluna por fundo é a mesma coisa
+   * que uma linha por fundo, só transposta.
+   */
+  function extrairSeries(ds, fmt, rows) {
+    const linhas = rows || ds.rows;
+    const out = [];
+    if (fmt.tipo === 'largo') {
+      for (const c of fmt.medidas) {
+        const m = new Map();
+        for (const r of linhas) {
+          const t = msDe(r[fmt.colData.key]), v = r[c.key];
+          if (typeof t !== 'number' || !isFinite(t) || typeof v !== 'number' || !isFinite(v)) continue;
+          m.set(t, v);
+        }
+        if (m.size < 3) continue;
+        const ts = Array.from(m.keys()).sort((a, b) => a - b);
+        out.push({ id: c.key, label: c.label, datas: ts, valores: ts.map((t) => m.get(t)) });
+      }
+      return out;
+    }
+    if (fmt.tipo === 'longo' || fmt.tipo === 'unico') {
+      const porId = new Map();
+      for (const r of linhas) {
+        const t = msDe(r[fmt.colData.key]), v = r[fmt.colValor.key];
+        if (typeof t !== 'number' || !isFinite(t) || typeof v !== 'number' || !isFinite(v)) continue;
+        const k = fmt.colId ? String(r[fmt.colId.key]) : 'série';
+        if (!porId.has(k)) porId.set(k, { m: new Map(), rot: null });
+        const e = porId.get(k);
+        e.m.set(t, v);
+        if (e.rot === null && fmt.colRotulo) {
+          const rr = r[fmt.colRotulo.key];
+          if (rr !== null && rr !== undefined && String(rr).trim()) e.rot = String(rr);
+        }
+      }
+      for (const [k, e] of porId) {
+        if (e.m.size < 3) continue;
+        const ts = Array.from(e.m.keys()).sort((a, b) => a - b);
+        out.push({ id: k, label: e.rot || k, datas: ts, valores: ts.map((t) => e.m.get(t)) });
+      }
+      return out;
+    }
+    return out;
+  }
+
+  /* =========================================================
+     JANELA COMUM E SOBREVIVÊNCIA
+     ========================================================= */
+  /**
+   * Recorta todas as séries à janela em que todas existem, e devolve o que
+   * foi preciso descartar. Um fundo que só tem metade do período não entra
+   * no ranking de retorno — entra na lista de quem não pôde ser comparado.
+   */
+  function janelaComum(series, opts) {
+    const o = opts || {};
+    const minCobertura = o.minCobertura === undefined ? 0.8 : o.minCobertura;
+    if (!series.length) return null;
+
+    const fimGlobal = Math.max.apply(null, series.map((s) => s.datas[s.datas.length - 1]));
+    const inicioGlobal = Math.min.apply(null, series.map((s) => s.datas[0]));
+
+    // fundo que parou de reportar antes do fim: é o viés de sobrevivência
+    const tolerancia = o.toleranciaDias === undefined ? 35 : o.toleranciaDias;
+    const encerrados = series.filter((s) => (fimGlobal - s.datas[s.datas.length - 1]) > tolerancia * DIA);
+    const vivos = series.filter((s) => (fimGlobal - s.datas[s.datas.length - 1]) <= tolerancia * DIA);
+
+    if (!vivos.length) return { erro: 'nenhuma série alcança o fim do período', encerrados: encerrados, series: [] };
+
+    /* Início comum: a escolha ingênua é a data mais tardia entre todos os
+       inícios — e aí UM fundo que nasceu ontem apaga cinco anos de histórico
+       de todos os outros. Em vez disso, testa-se cada início candidato e
+       escolhe-se o que maximiza fundos × períodos: o poder estatístico da
+       comparação é proporcional a esse produto, e é ele que decide se a
+       tela consegue distinguir habilidade de sorte. Quem fica de fora é dito. */
+    const candidatos = Array.from(new Set(vivos.map((s) => s.datas[0]))).sort((a, b) => a - b);
+    let inicioComum = candidatos[candidatos.length - 1], melhorGanho = -1;
+    for (const ini of candidatos) {
+      const cobrem = vivos.filter((s) => s.datas[0] <= ini);
+      if (!cobrem.length) continue;
+      const periodos = Math.min.apply(null, cobrem.map((s) => s.datas.filter((t) => t >= ini).length));
+      const ganho = cobrem.length * periodos;
+      if (ganho > melhorGanho) { melhorGanho = ganho; inicioComum = ini; }
+    }
+    const duracao = fimGlobal - inicioComum;
+
+    const dentro = [], curtos = [];
+    for (const s of vivos) {
+      if (s.datas[0] > inicioComum) { curtos.push(s); continue; }
+      const idx = s.datas.filter((t) => t >= inicioComum && t <= fimGlobal);
+      const esperado = s.datas.filter((t) => t >= inicioComum).length;
+      const cobertura = esperado ? idx.length / esperado : 0;
+      if (idx.length < 3 || cobertura < minCobertura) { curtos.push(s); continue; }
+      const pares = [];
+      for (let i = 0; i < s.datas.length; i++) {
+        if (s.datas[i] >= inicioComum && s.datas[i] <= fimGlobal) pares.push([s.datas[i], s.valores[i]]);
+      }
+      dentro.push({ id: s.id, label: s.label, datas: pares.map((x) => x[0]), valores: pares.map((x) => x[1]) });
+    }
+    return {
+      series: dentro, encerrados: encerrados, curtos: curtos,
+      inicio: inicioComum, fim: fimGlobal, inicioGlobal: inicioGlobal,
+      dias: Math.round(duracao / DIA),
+      recortou: inicioComum > inicioGlobal + 5 * DIA,
+      poder: melhorGanho
+    };
+  }
+
+  /* =========================================================
+     MÉTRICAS DE CADA SÉRIE
+     ========================================================= */
+  function metricas(s, opts) {
+    const o = opts || {};
+    const r = F.resumo(s.datas, s.valores, { rfAno: o.rfAno });
+    const rets = r.retornos.filter((x) => typeof x === 'number' && isFinite(x));
+    return {
+      id: s.id, label: s.label, n: s.valores.length,
+      inicio: s.datas[0], fim: s.datas[s.datas.length - 1],
+      acumulado: r.acumulado, cagr: r.cagr, vol: r.vol,
+      sharpe: r.sharpe, sortino: r.sortino,
+      drawdown: r.drawdown ? r.drawdown.max : null,
+      recuperado: r.drawdown ? r.drawdown.recuperado : null,
+      var: r.var ? r.var.historico : null,
+      positivos: rets.length ? rets.filter((x) => x > 0).length / rets.length : null,
+      pior: r.pior, melhor: r.melhor,
+      ppa: r.ppa, freq: r.freq, retornos: r.retornos, serie: s
+    };
+  }
+
+  /* =========================================================
+     CORRELAÇÃO ENTRE FUNDOS
+     ========================================================= */
+  /** Matriz par a par sobre retornos pareados POR DATA, nunca por posição. */
+  function matrizCorrelacao(series) {
+    const mapas = series.map((s) => {
+      const m = new Map();
+      for (let i = 1; i < s.datas.length; i++) {
+        const a = s.valores[i - 1], b = s.valores[i];
+        if (!(a > 0) || !isFinite(b)) continue;
+        m.set(s.datas[i], b / a - 1);
+      }
+      return m;
+    });
+    const n = series.length;
+    const M = [];
+    for (let i = 0; i < n; i++) {
+      M.push([]);
+      for (let j = 0; j < n; j++) {
+        if (i === j) { M[i].push(1); continue; }
+        if (j < i) { M[i].push(M[j][i]); continue; }
+        const xs = [], ys = [];
+        for (const [t, v] of mapas[i]) {
+          const w = mapas[j].get(t);
+          if (w === undefined) continue;
+          xs.push(v); ys.push(w);
+        }
+        M[i].push(xs.length >= 3 ? S.pearson(xs, ys) : null);
+      }
+    }
+    return { labels: series.map((s) => s.label), M: M };
+  }
+
+  /* =========================================================
+     CONTRA UM BENCHMARK
+     ========================================================= */
+  /**
+   * Excesso de retorno, erro de rastreamento, índice de informação e o teste
+   * de que o excesso médio difere de zero. É esse p que vai para o FDR.
+   */
+  function contraBenchmark(s, bench, opts) {
+    const o = opts || {};
+    const mb = new Map();
+    for (let i = 1; i < bench.datas.length; i++) {
+      const a = bench.valores[i - 1], b = bench.valores[i];
+      if (!(a > 0) || !isFinite(b)) continue;
+      mb.set(bench.datas[i], b / a - 1);
+    }
+    const ex = [], rf = [], ra = [];
+    for (let i = 1; i < s.datas.length; i++) {
+      const a = s.valores[i - 1], b = s.valores[i];
+      if (!(a > 0) || !isFinite(b)) continue;
+      const rBench = mb.get(s.datas[i]);
+      if (rBench === undefined) continue;
+      const rAtivo = b / a - 1;
+      ex.push(rAtivo - rBench); rf.push(rBench); ra.push(rAtivo);
+    }
+    if (ex.length < 6) return null;
+
+    const ppa = (F.frequencia(s.datas) || {}).ppa || null;
+    const m = S.mean(ex), sd = S.stdev(ex);
+    const te = ppa && sd !== null ? sd * Math.sqrt(ppa) : null;      // tracking error
+    const ir = te && te > 0 ? (m * ppa) / te : null;                  // índice de informação
+    // t de Student sobre o excesso médio: H0 = não há excesso
+    const se = sd !== null && ex.length ? sd / Math.sqrt(ex.length) : null;
+    const t = se && se > 0 ? m / se : null;
+    const p = t === null ? null : AG.inference.tTwoTailed(t, ex.length - 1);
+
+    const acumAtivo = F.acumulado(ra), acumBench = F.acumulado(rf);
+    return {
+      n: ex.length, excessoMedio: m,
+      excessoAcumulado: acumAtivo !== null && acumBench !== null ? (1 + acumAtivo) / (1 + acumBench) - 1 : null,
+      acumAtivo: acumAtivo, acumBench: acumBench,
+      trackingError: te, informationRatio: ir, t: t, p: p,
+      acima: ex.filter((x) => x > 0).length, total: ex.length,
+      beta: F.beta(ra, rf)
+    };
+  }
+
+  /**
+   * Meta atuarial: IPCA do período + taxa contratada ao ano. É o benchmark
+   * que decide se um RPPS cumpriu a obrigação — e não é o CDI.
+   */
+  function metaAtuarial(datas, ipcaDatas, ipcaValores, taxaAno) {
+    const idx = new Map();
+    for (let i = 0; i < ipcaDatas.length; i++) idx.set(chaveMes(ipcaDatas[i]), ipcaValores[i]);
+    const out = [];
+    let base = null;
+    for (const t of datas) {
+      const v = idx.get(chaveMes(t));
+      if (v === undefined || !(v > 0)) { out.push(null); continue; }
+      if (base === null) { base = v; out.push(100); continue; }
+      const anos = (t - datas[0]) / (365.25 * DIA);
+      out.push(100 * (v / base) * Math.pow(1 + taxaAno, anos));
+    }
+    return out;
+  }
+  function chaveMes(t) {
+    const d = t instanceof Date ? t : new Date(t);
+    return d.getUTCFullYear() * 100 + d.getUTCMonth();
+  }
+
+  /* =========================================================
+     RANKING COM CORREÇÃO DE MÚLTIPLAS COMPARAÇÕES
+     ========================================================= */
+  /**
+   * Recebe as métricas com o teste contra o benchmark e aplica FDR de
+   * Benjamini–Hochberg. Devolve quantos batem o benchmark no papel e
+   * quantos sobrevivem à correção — a diferença entre os dois números é a
+   * informação mais útil da tela inteira.
+   */
+  function sobrevivemAoFDR(itens, alfa) {
+    const a = alfa === undefined ? 0.05 : alfa;
+    const comP = itens.filter((x) => x.bench && x.bench.p !== null && isFinite(x.bench.p));
+    if (!comP.length) return { testados: 0, brutos: 0, sobreviventes: 0, itens: itens };
+    AG.rigor.bh(comP, (x) => x.bench.p);
+    let brutos = 0, sobrev = 0;
+    for (const x of comP) {
+      const ganhou = x.bench.excessoMedio > 0;
+      x.significativoBruto = ganhou && x.bench.p < a;
+      x.significativoFDR = ganhou && x.q !== null && x.q < a;
+      if (x.significativoBruto) brutos++;
+      if (x.significativoFDR) sobrev++;
+    }
+    /* "Nenhum sobrevive" sozinho frustra; com o ALFA MÍNIMO DETECTÁVEL vira
+       informação. É o menor excesso anual que esta janela conseguiria
+       distinguir de zero: abaixo dele, habilidade real e sorte produzem a
+       mesma tela, e mais dados é a única saída. */
+    const detectaveis = [];
+    for (const x of comP) {
+      const b = x.bench;
+      if (!b || !b.n || b.trackingError === null || !(b.trackingError > 0)) continue;
+      const tc = AG.rigor.tQuantile(0.975, Math.max(1, b.n - 1));
+      const ppa = x.ppa || 12;
+      detectaveis.push(tc * b.trackingError / Math.sqrt(b.n) * Math.sqrt(ppa));
+    }
+    detectaveis.sort((p, q) => p - q);
+    return {
+      testados: comP.length,
+      acimaNoPapel: itens.filter((x) => x.bench && x.bench.excessoMedio > 0).length,
+      brutos: brutos, sobreviventes: sobrev, alfa: a, itens: itens,
+      alfaMinimo: detectaveis.length ? detectaveis[Math.floor(detectaveis.length / 2)] : null,
+      nMedio: comP.length ? Math.round(comP.reduce((t, x) => t + x.bench.n, 0) / comP.length) : 0
+    };
+  }
+
+  /* =========================================================
+     CARTEIRA (DAIR / posição)
+     ========================================================= */
+  /** Concentração por qualquer chave: participação, HHI e o topo. */
+  function concentracao(rows, chaveKey, valorKey) {
+    const m = new Map();
+    let total = 0;
+    for (const r of rows) {
+      const k = r[chaveKey], v = r[valorKey];
+      if (k === null || k === undefined || typeof v !== 'number' || !isFinite(v) || v <= 0) continue;
+      m.set(String(k), (m.get(String(k)) || 0) + v);
+      total += v;
+    }
+    if (!total) return null;
+    const itens = Array.from(m.entries())
+      .map(([k, v]) => ({ label: k, valor: v, share: v / total }))
+      .sort((a, b) => b.valor - a.valor);
+    let acc = 0, p80 = 0;
+    for (const it of itens) { acc += it.share; p80++; if (acc >= 0.8) break; }
+    /* dois HHI, de propósito: o NORMALIZADO é o que o resto do agente usa
+       (0..1 descontando 1/n, comparável entre listas de tamanhos diferentes);
+       o BRUTO é a soma dos quadrados, cujo inverso dá a leitura mais direta
+       que existe — a quantas aplicações de mesmo tamanho a carteira equivale. */
+    let bruto = 0;
+    for (const it of itens) bruto += it.share * it.share;
+    return {
+      itens: itens, total: total, n: itens.length,
+      hhi: S.hhi(itens.map((x) => x.valor)),
+      hhiBruto: bruto,
+      equivalentes: bruto > 0 ? 1 / bruto : null,
+      top1: itens[0], para80: p80,
+      top5: itens.slice(0, 5).reduce((a, b) => a + b.share, 0)
+    };
+  }
+
+  /* Limites da Resolução CMN para RPPS, por segmento. São de norma, e
+     mudam com o tempo: ficam aqui explícitos e datados, para quem conferir
+     saber contra o que o agente comparou. */
+  const CMN = {
+    referencia: 'Resolução CMN 4.963/2021',
+    segmentos: [
+      { re: /renda fixa/i, rot: 'Renda fixa', limite: 1.00 },
+      { re: /renda vari[áa]vel/i, rot: 'Renda variável', limite: 0.30 },
+      { re: /exterior|investimento no exterior/i, rot: 'Exterior', limite: 0.10 },
+      { re: /estruturad/i, rot: 'Estruturados', limite: 0.10 },
+      { re: /imobili[áa]ri/i, rot: 'Imobiliário', limite: 0.05 },
+      { re: /empr[ée]stimo|consignad/i, rot: 'Empréstimos a segurados', limite: 0.05 }
+    ]
+  };
+  function enquadramento(conc) {
+    if (!conc) return [];
+    const out = [];
+    for (const it of conc.itens) {
+      const seg = CMN.segmentos.find((s) => s.re.test(it.label));
+      if (!seg) continue;
+      out.push({
+        label: it.label, rot: seg.rot, share: it.share, limite: seg.limite,
+        uso: it.share / seg.limite,
+        situacao: it.share > seg.limite ? 'acima' : it.share / seg.limite >= 0.9 ? 'proximo' : 'dentro'
+      });
+    }
+    return out;
+  }
+
+  AG.fundos = {
+    detectarFormato, extrairSeries, janelaComum, metricas, matrizCorrelacao,
+    contraBenchmark, metaAtuarial, sobrevivemAoFDR, concentracao, enquadramento,
+    CMN, COTA_RE, PL_RE
   };
 })();
 
@@ -16740,7 +17229,8 @@ const RECEITAS_ARQUIVO = [
     painelFin.appendChild(el('div', { class: 'hint', style: { marginTop: '12px' },
       html: 'Com o arquivo carregado, as perguntas que a camada financeira entende: <b>retorno e risco</b>, ' +
         '<b>volatilidade</b>, <b>drawdown</b>, <b>sharpe com cdi de 11%</b>, <b>beta em relação ao índice</b>, ' +
-        '<b>valores reais descontada a inflação</b>, <b>limite de pessoal pela LRF</b>, <b>indicadores contábeis</b>.' }));
+        '<b>valores reais descontada a inflação</b>, <b>limite de pessoal pela LRF</b>, <b>indicadores contábeis</b>, ' +
+        '<b>comparar os fundos contra o CDI</b>, <b>composição da carteira e enquadramento</b>.' }));
 
     body.appendChild(painelCat);
     body.appendChild(painelRec);
@@ -17624,6 +18114,442 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.finUI = { serieDoPlano, achaIndicePrecos };
+})();
+
+
+/* ==== 92-render-fundos.js ==== */
+/* ============================================================
+   92 — COMPARADOR DE FUNDOS E CARTEIRA
+   Duas telas. O comparador põe fundos lado a lado com a correção que quase
+   nenhuma tela de mercado faz; a carteira mostra concentração e enquadramento.
+
+   A tela do comparador foi desenhada em torno de UM número: a diferença
+   entre quantos fundos batem o benchmark no papel e quantos sobrevivem à
+   correção de múltiplas comparações. Esse par de números é a única defesa
+   contra escolher o fundo que teve sorte.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const FU = AG.fundos, FI = AG.fin;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, n) {
+    body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: ds.rows.length, rowsMatched: n, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+  const pct = (v, c) => (v === null || v === undefined ? '—' : AG.fmtPct(v, c === undefined ? 1 : c));
+  const num = (v, c) => (v === null || v === undefined ? '—' : Number(v).toFixed(c === undefined ? 2 : c).replace('.', ','));
+  const dia = (d) => (d === null || d === undefined ? '—' : AG.fmtDate(d instanceof Date ? d.getTime() : d));
+
+  /** Nome do benchmark dito na pergunta, ou o que a base entrega. */
+  const BENCH_RE = /(cdi|ibov|ibovespa|ima-?b?|ihfa|selic|benchmark|indice|índice|poupanca|meta atuarial)/i;
+  function achaBenchmark(series, plan) {
+    const q = AG.norm(plan.question || '');
+    const dito = series.find((s) => q.indexOf(AG.norm(s.label)) >= 0 && BENCH_RE.test(s.label));
+    if (dito) return dito;
+    return series.find((s) => BENCH_RE.test(s.label)) || null;
+  }
+  /** Meta atuarial declarada na pergunta: "ipca + 5%" ou "meta de 5%". */
+  function taxaMeta(plan) {
+    const q = AG.norm(plan.question || '');
+    const m = /(ipca|inpc|meta)[^0-9]{0,14}(\d{1,2}(?:[.,]\d{1,2})?)\s*%/.exec(q);
+    return m ? parseFloat(m[2].replace(',', '.')) / 100 : null;
+  }
+
+  /* =========================================================
+     COMPARADOR
+     ========================================================= */
+  /**
+   * "Comparar os fundos contra o CDI" tem uma armadilha: o interpretador lê
+   * CDI como um VALOR da coluna de fundo e filtra a base para ele — sobrando
+   * uma série só. Num comparador, o benchmark nomeado é a referência, nunca o
+   * recorte. Aqui esse filtro é levantado e devolvido como benchmark.
+   */
+  function separaFiltroDeBenchmark(plan, fmt) {
+    const filtros = plan.filters || [];
+    const chaves = [fmt.colId && fmt.colId.key, fmt.colRotulo && fmt.colRotulo.key].filter(Boolean);
+    const bench = [], resto = [];
+    for (const f of filtros) {
+      const naChave = chaves.indexOf(f.column) >= 0;
+      const igualdade = !f.op || f.op === '=' || f.op === 'in';
+      const valores = [].concat(f.value === undefined ? [] : f.value);
+      if (naChave && igualdade && valores.length && valores.every((v) => BENCH_RE.test(String(v)))) bench.push(f);
+      else resto.push(f);
+    }
+    return { bench: bench, resto: resto };
+  }
+
+  AG.renderers.fincompara = function (body, ds, plan, question) {
+    const fmt = FU.detectarFormato(ds);
+    if (fmt.tipo === 'carteira') {
+      // sem série no tempo o que existe é composição, não comparação de retorno
+      return AG.renderers.fincarteira(body, ds, plan, question);
+    }
+    const sep = separaFiltroDeBenchmark(plan, fmt);
+    const planUsado = sep.bench.length ? Object.assign({}, plan, { filters: sep.resto }) : plan;
+    const rows = engine.applyFilters(ds, planUsado);
+    const todas = FU.extrairSeries(ds, fmt, rows);
+    if (todas.length < 2) {
+      throw new Error('achei ' + todas.length + ' série(s) nesta fonte. Para comparar preciso de pelo menos duas — ' +
+        'ou uma coluna que identifique o fundo (CNPJ, nome) com várias linhas por data, ou uma coluna por fundo.');
+    }
+
+    let bench = null;
+    if (sep.bench.length) {
+      const alvos = [].concat(sep.bench[0].value).map((v) => AG.norm(String(v)));
+      bench = todas.find((s) => alvos.indexOf(AG.norm(s.label)) >= 0 || alvos.indexOf(AG.norm(s.id)) >= 0) || null;
+    }
+    if (!bench) bench = achaBenchmark(todas, plan);
+    const candidatas = bench ? todas.filter((s) => s.id !== bench.id) : todas;
+    const jan = FU.janelaComum(candidatas, {});
+    if (!jan || !jan.series.length) throw new Error((jan && jan.erro) || 'não consegui montar uma janela comum entre as séries');
+
+    const rfAno = taxaLivreDaPergunta(plan);
+    const itens = jan.series.map((s) => FU.metricas(s, { rfAno: rfAno }));
+    if (bench) {
+      const bJan = recorta(bench, jan.inicio, jan.fim);
+      for (const it of itens) it.bench = FU.contraBenchmark(it.serie, bJan, {});
+    }
+    const fdr = bench ? FU.sobrevivemAoFDR(itens, 0.05) : null;
+    itens.sort((a, b) => (b.acumulado || -Infinity) - (a.acumulado || -Infinity));
+
+    const freq = itens[0].freq;
+    head(body, 'Comparação de ' + itens.length + ' fundos',
+      dia(jan.inicio) + ' a ' + dia(jan.fim) + ' · janela comum de ' + jan.dias + ' dias · ' +
+      (freq ? freq.rot : 'frequência indefinida') +
+      (bench ? ' · benchmark: <b>' + AG.esc(bench.label) + '</b>' : ' · sem benchmark na base'));
+
+    /* --- o par de números que é o ponto da tela --- */
+    if (fdr && fdr.testados) {
+      body.appendChild(el('div', { class: 'kpis' }, [
+        U().kpi('Comparados', String(itens.length), 'na mesma janela'),
+        U().kpi('Batem no papel', String(fdr.acimaNoPapel), 'excesso médio positivo'),
+        U().kpi('Passam no teste', String(fdr.brutos), 'p < 0,05, sem correção'),
+        U().kpi('Sobrevivem ao FDR', String(fdr.sobreviventes),
+          'Benjamini–Hochberg a 5% — é este o número')
+      ]));
+    } else {
+      const melhor = itens[0];
+      body.appendChild(el('div', { class: 'kpis' }, [
+        U().kpi('Comparados', String(itens.length), 'na mesma janela'),
+        U().kpi('Melhor retorno', melhor.label.slice(0, 22), pct(melhor.acumulado, 1)),
+        U().kpi('Melhor Sharpe', melhorPor(itens, 'sharpe'), 'prêmio por unidade de risco'),
+        U().kpi('Menor perda máxima', melhorPor(itens, 'drawdown'), 'drawdown menos profundo')
+      ]));
+    }
+
+    if (sep.bench.length && bench) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Você nomeou <b>' + AG.esc(bench.label) + '</b> na pergunta. Tratei como <b>referência de comparação</b>, não como filtro — ' +
+        'filtrar a base para o benchmark deixaria uma série só e não haveria o que comparar.')));
+    }
+
+    /* --- sobrevivência e janela, antes da tabela --- */
+    if (jan.encerrados && jan.encerrados.length) {
+      body.appendChild(U().insightNode(ins('crit', '✕',
+        '<b>Viés de sobrevivência:</b> ' + jan.encerrados.length + ' fundo(s) pararam de reportar antes do fim e ficaram de fora — ' +
+        AG.esc(jan.encerrados.slice(0, 4).map((s) => s.label).join(', ')) +
+        (jan.encerrados.length > 4 ? ' e outros' : '') + '. Comparar só quem chegou até hoje é comparar quem deu certo: ' +
+        'a média do grupo sobe sozinha, sem que nenhum gestor tenha feito nada.')));
+    }
+    if (jan.curtos && jan.curtos.length) {
+      body.appendChild(U().insightNode(ins('warn', '⚠',
+        '<b>' + jan.curtos.length + ' fundo(s)</b> não cobrem a janela comum e saíram do ranking: ' +
+        AG.esc(jan.curtos.slice(0, 4).map((s) => s.label).join(', ')) + '. ' +
+        'Comparar um fundo de 6 meses com um de 5 anos pelo retorno acumulado é comparar prazos, não gestão.')));
+    }
+    if (jan.recortou) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'A janela foi recortada para começar em <b>' + dia(jan.inicio) + '</b>, que é quando o último fundo do grupo passou a existir. ' +
+        'Todos os números abaixo são da mesma janela — é a única forma de o ranking significar alguma coisa.')));
+    }
+
+    /* --- a tabela --- */
+    const cols = [
+      { key: 'fundo', label: 'Fundo' },
+      { key: 'acum', label: 'Retorno', format: 'percent' },
+      { key: 'cagr', label: 'a.a.', format: 'percent' },
+      { key: 'vol', label: 'Volatilidade', format: 'percent' },
+      { key: 'sharpe', label: 'Sharpe', format: 'number' },
+      { key: 'dd', label: 'Perda máxima', format: 'percent' },
+      { key: 'pos', label: '% positivos', format: 'percent' }
+    ];
+    if (bench) {
+      cols.push({ key: 'exc', label: 'vs. ' + bench.label, format: 'percent' });
+      cols.push({ key: 'ir', label: 'Índice de informação', format: 'number' });
+      cols.push({ key: 'sit', label: 'Resiste ao FDR?' });
+    }
+    const td = {
+      columns: cols,
+      rows: itens.map((x) => ({
+        fundo: x.label, acum: x.acumulado, cagr: x.cagr, vol: x.vol, sharpe: x.sharpe,
+        dd: x.drawdown, pos: x.positivos,
+        exc: x.bench ? x.bench.excessoAcumulado : null,
+        ir: x.bench ? x.bench.informationRatio : null,
+        sit: !x.bench ? '—' : x.significativoFDR ? 'sim' : x.significativoBruto ? 'só sem correção' :
+          (x.bench.excessoMedio > 0 ? 'não — dentro do acaso' : 'abaixo do benchmark')
+      }))
+    };
+    const cTab = charts.card({ title: 'Todos os fundos na mesma janela', subtitle: 'ordenado por retorno acumulado', tableData: td });
+    cTab.body.appendChild(charts.dataTable(td));
+    body.appendChild(cTab.wrap);
+
+    /* --- risco × retorno: o mapa que mostra o que o ranking esconde --- */
+    const comAmbos = itens.filter((x) => x.vol !== null && x.cagr !== null);
+    if (comAmbos.length >= 3) {
+      const c = charts.card({
+        title: 'Risco × retorno',
+        subtitle: 'cada ponto é um fundo; quem está acima e à esquerda entregou mais por unidade de risco'
+      });
+      charts.renderInto(c.body, (w) => charts.scatter({
+        width: w, height: 340,
+        xs: comAmbos.map((x) => x.vol), ys: comAmbos.map((x) => x.cagr),
+        colors: comAmbos.map((x) => (x.significativoFDR ? AG.PALETTE[2] : x.significativoBruto ? AG.PALETTE[3] : AG.PALETTE[0])),
+        xLabel: 'Volatilidade anualizada', yLabel: 'Retorno anualizado',
+        xFormat: 'percent', yFormat: 'percent', format: 'percent'
+      }));
+      if (bench) {
+        c.wrap.appendChild(charts.legend([
+          { label: 'resiste ao FDR', color: AG.PALETTE[2] },
+          { label: 'só sem correção', color: AG.PALETTE[3] },
+          { label: 'dentro do acaso', color: AG.PALETTE[0] }
+        ]));
+      }
+      body.appendChild(c.wrap);
+    }
+
+    /* --- curvas em base 100 dos melhores --- */
+    const topo = itens.slice(0, Math.min(6, itens.length));
+    const sBase = topo.map((x, i) => ({
+      key: x.label, color: AG.PALETTE[i % 8],
+      points: pontosBase100(x.serie, freq)
+    }));
+    if (bench) {
+      const bJan = recorta(bench, jan.inicio, jan.fim);
+      sBase.push({ key: bench.label, color: AG.PALETTE[7], points: pontosBase100(bJan, freq) });
+    }
+    if (sBase.length >= 2 && sBase[0].points.length) {
+      const c2 = charts.card({
+        title: 'Evolução com o mesmo ponto de partida',
+        subtitle: 'todas as séries em base 100 no início da janela comum' + (bench ? ' — a linha do benchmark está junto' : '')
+      });
+      charts.renderInto(c2.body, (w) => charts.timeChart({
+        width: w, height: 320, type: 'line', format: 'number',
+        data: sBase[0].points, series: sBase
+      }));
+      c2.wrap.appendChild(charts.legend(sBase.map((s) => ({ label: s.key, color: s.color }))));
+      body.appendChild(c2.wrap);
+    }
+
+    /* --- correlação: diversificação que não diversifica --- */
+    if (topo.length >= 3) {
+      const mc = FU.matrizCorrelacao(topo.map((x) => x.serie));
+      const pares = [];
+      for (let i = 0; i < mc.M.length; i++) {
+        for (let j = i + 1; j < mc.M.length; j++) {
+          if (mc.M[i][j] !== null) pares.push({ a: mc.labels[i], b: mc.labels[j], r: mc.M[i][j] });
+        }
+      }
+      if (pares.length) {
+        pares.sort((x, y) => y.r - x.r);
+        const tdc = {
+          columns: [{ key: 'a', label: 'Fundo' }, { key: 'b', label: 'Fundo' }, { key: 'r', label: 'Correlação', format: 'number' }],
+          rows: pares.slice(0, 12)
+        };
+        const c3 = charts.card({
+          title: 'Pares mais correlacionados entre os ' + topo.length + ' primeiros',
+          subtitle: 'dois fundos com correlação alta são, na prática, o mesmo risco duas vezes',
+          tableData: tdc
+        });
+        c3.body.appendChild(charts.dataTable(tdc));
+        body.appendChild(c3.wrap);
+        const alta = pares.filter((p) => p.r > 0.9);
+        if (alta.length) {
+          body.appendChild(U().insightNode(ins('warn', '⚠',
+            '<b>' + alta.length + ' par(es)</b> com correlação acima de 0,90 — o topo desta lista é ' +
+            AG.esc(alta[0].a) + ' e ' + AG.esc(alta[0].b) + ' com <b>' + num(alta[0].r, 2) + '</b>. ' +
+            'Dividir aplicação entre fundos assim não diversifica nada: é a mesma aposta com dois nomes.')));
+        }
+      }
+    }
+
+    /* --- a leitura que fecha --- */
+    if (fdr && fdr.testados) {
+      const dif = fdr.acimaNoPapel - fdr.sobreviventes;
+      body.appendChild(U().insightNode(ins(
+        fdr.sobreviventes === 0 ? 'crit' : 'good', fdr.sobreviventes === 0 ? '✕' : '✓',
+        '<b>' + fdr.acimaNoPapel + ' de ' + itens.length + '</b> fundos aparecem acima do benchmark; depois de corrigir para as ' +
+        itens.length + ' comparações simultâneas, <b>' + fdr.sobreviventes + '</b> sobrevive(m). ' +
+        (fdr.sobreviventes === 0
+          ? 'Ou seja: nenhum desempenho aqui se distingue de sorte. Escolher o primeiro colocado desta lista é escolher o mais sortudo, não o melhor.'
+          : 'Os outros ' + dif + ' estão dentro do que o acaso produz quando se olha ' + itens.length + ' fundos ao mesmo tempo.') +
+        ' Com ' + itens.length + ' candidatos, esperar-se-ia ~' + Math.round(itens.length * 0.05) +
+        ' "vencedores" por acaso puro a 5%.')));
+      if (fdr.alfaMinimo !== null) {
+        body.appendChild(U().insightNode(ins('info', 'ⓘ',
+          '<b>O que esta janela conseguiria detectar:</b> com ' + fdr.nMedio +
+          ' observações e a volatilidade observada, só um excesso acima de <b>' + pct(fdr.alfaMinimo, 1) +
+          ' ao ano</b> se distinguiria de zero. Abaixo disso, um gestor com habilidade real e outro com sorte ' +
+          'produzem exatamente a mesma tela — e a saída não é escolher melhor, é exigir histórico mais longo. ' +
+          'É por isso que "bateu o CDI em 12 meses" não é evidência de nada.')));
+      }
+    }
+    const meta = taxaMeta(plan);
+    if (meta !== null) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Você citou uma meta de <b>inflação + ' + pct(meta, 1) + '</b>. Para o agente medir cumprimento de meta atuarial ' +
+        'preciso do índice de preços na mesma base (IPCA ou INPC, número índice ou variação mensal em %) — ' +
+        'sem ele, a meta é uma taxa no ar, não uma linha comparável.')));
+    }
+
+    foot(body, question, plan, ds, rows.length);
+  };
+
+  function recorta(s, ini, fim) {
+    const d = [], v = [];
+    for (let i = 0; i < s.datas.length; i++) {
+      if (s.datas[i] >= ini && s.datas[i] <= fim) { d.push(s.datas[i]); v.push(s.valores[i]); }
+    }
+    return { id: s.id, label: s.label, datas: d, valores: v };
+  }
+  function pontosBase100(s, freq) {
+    const b = FI.base100(s.valores);
+    if (!b) return [];
+    const g = !freq ? null : freq.ppa >= 52 ? null : freq.ppa >= 4 ? 'month' : 'year';
+    return s.datas.map((t, i) => ({ label: AG.fmtDate(t, g), value: b[i] }));
+  }
+  /* Maior é melhor para Sharpe; para drawdown, que é negativo, o melhor é o
+     MENOS profundo — que também é o maior valor. Um sort só serve aos dois. */
+  function melhorPor(itens, campo) {
+    const v = itens.filter((x) => typeof x[campo] === 'number' && isFinite(x[campo]));
+    if (!v.length) return '—';
+    v.sort((a, b) => b[campo] - a[campo]);
+    return v[0].label.slice(0, 22);
+  }
+  function taxaLivreDaPergunta(plan) {
+    const q = AG.norm(plan.question || '');
+    const m = /(cdi|selic|livre de risco)[^0-9]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*%/.exec(q);
+    return m ? parseFloat(m[2].replace(',', '.')) / 100 : null;
+  }
+
+  /* =========================================================
+     CARTEIRA — composição, concentração e enquadramento
+     ========================================================= */
+  const SEG_RE = /(segmento|classe|tipo|categoria|enquadr)/i;
+  const GESTOR_RE = /(gestor|administrador|institui)/i;
+  const VALOR_RE = /(valor|aplicad|saldo|posicao|posi[çc][ãa]o|montante|patrim)/i;
+
+  AG.renderers.fincarteira = function (body, ds, plan, question) {
+    const cols = ds.columns.filter((c) => !c.virtual);
+    const medidas = cols.filter((c) => c.role === 'measure');
+    const dims = cols.filter((c) => c.role === 'dimension' || c.role === 'id' || c.role === 'text');
+    const cVal = medidas.find((c) => VALOR_RE.test(c.label)) || medidas[0];
+    if (!cVal) throw new Error('não achei uma coluna de valor aplicado nesta fonte');
+    const cFundo = dims.find((c) => /fundo|ativo|aplica|cnpj|denomina/i.test(c.label)) || dims[0];
+    const cSeg = dims.find((c) => SEG_RE.test(c.label));
+    const cGes = dims.find((c) => GESTOR_RE.test(c.label));
+    if (!cFundo) throw new Error('não achei uma coluna que identifique cada aplicação');
+
+    const rows = engine.applyFilters(ds, plan);
+    const porFundo = FU.concentracao(rows, cFundo.key, cVal.key);
+    if (!porFundo) throw new Error('os valores aplicados não somam nada positivo nesta fonte');
+    const porSeg = cSeg ? FU.concentracao(rows, cSeg.key, cVal.key) : null;
+    const porGes = cGes ? FU.concentracao(rows, cGes.key, cVal.key) : null;
+    const enq = porSeg ? FU.enquadramento(porSeg) : [];
+
+    head(body, 'Composição da carteira',
+      porFundo.n + ' aplicações · ' + AG.fmtCompact(porFundo.total, 'currency') +
+      (porSeg ? ' · ' + porSeg.n + ' segmentos' : '') + (porGes ? ' · ' + porGes.n + ' gestores' : ''));
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Total aplicado', AG.fmtCompact(porFundo.total, 'currency'), porFundo.n + ' aplicações'),
+      U().kpi('Maior posição', pct(porFundo.top1.share, 1), porFundo.top1.label.slice(0, 26)),
+      U().kpi('Top 5', pct(porFundo.top5, 1), 'das cinco maiores somadas'),
+      U().kpi('Concentração (HHI)', num(porFundo.hhi * 100, 0) + '/100',
+        'equivale a ' + num(porFundo.equivalentes, 1) + ' aplicações iguais')
+    ]));
+
+    /* --- enquadramento, quando há segmento --- */
+    if (enq.length) {
+      const tde = {
+        columns: [{ key: 'seg', label: 'Segmento' }, { key: 'share', label: '% da carteira', format: 'percent' },
+          { key: 'lim', label: 'Limite CMN', format: 'percent' }, { key: 'uso', label: 'Uso do limite', format: 'percent' },
+          { key: 'sit', label: 'Situação' }],
+        rows: enq.map((x) => ({
+          seg: x.label, share: x.share, lim: x.limite, uso: x.uso,
+          sit: x.situacao === 'acima' ? 'ACIMA do limite' : x.situacao === 'proximo' ? 'próximo do limite' : 'dentro'
+        }))
+      };
+      const ce = charts.card({
+        title: 'Enquadramento por segmento',
+        subtitle: FU.CMN.referencia + ' — confira a norma vigente antes de concluir',
+        tableData: tde
+      });
+      ce.body.appendChild(charts.dataTable(tde));
+      body.appendChild(ce.wrap);
+      for (const x of enq) {
+        if (x.situacao === 'dentro') continue;
+        body.appendChild(U().insightNode(ins(x.situacao === 'acima' ? 'crit' : 'warn', x.situacao === 'acima' ? '✕' : '⚠',
+          '<b>' + AG.esc(x.label) + '</b>: ' + pct(x.share, 2) + ' da carteira, contra um limite de ' + pct(x.limite, 0) +
+          ' (' + pct(x.uso, 0) + ' do limite). ' + (x.situacao === 'acima'
+            ? 'Posição acima do limite normativo — exige reenquadramento e justificativa no relatório.'
+            : 'Ainda dentro, mas sem folga para oscilação de mercado: uma alta do segmento estoura o limite sem nenhuma aplicação nova.'))));
+      }
+    }
+
+    /* --- composição --- */
+    if (porSeg) {
+      const c = charts.card({ title: 'Por segmento', subtitle: 'participação sobre o total aplicado' });
+      charts.renderInto(c.body, (w) => charts.barsH({
+        width: w, data: porSeg.itens.map((x) => ({ label: x.label, value: x.valor, share: x.share })),
+        format: 'currency', height: Math.max(160, porSeg.itens.length * 34)
+      }));
+      body.appendChild(c.wrap);
+    }
+    const cf = charts.card({
+      title: 'Por aplicação', subtitle: 'as maiores posições primeiro',
+      tableData: {
+        columns: [{ key: 'label', label: 'Fundo' }, { key: 'valor', label: 'Aplicado', format: 'currency' },
+          { key: 'share', label: 'Participação', format: 'percent' }],
+        rows: porFundo.itens
+      }
+    });
+    charts.renderInto(cf.body, (w) => charts.barsH({
+      width: w, data: porFundo.itens.slice(0, 15).map((x) => ({ label: x.label, value: x.valor, share: x.share })),
+      format: 'currency', height: Math.max(180, Math.min(15, porFundo.itens.length) * 32)
+    }));
+    body.appendChild(cf.wrap);
+
+    /* --- leituras --- */
+    if (porGes && porGes.top1.share > 0.25) {
+      body.appendChild(U().insightNode(ins(porGes.top1.share > 0.4 ? 'warn' : 'info', porGes.top1.share > 0.4 ? '⚠' : 'ⓘ',
+        'Concentração por gestor: <b>' + AG.esc(porGes.top1.label) + '</b> responde por <b>' + pct(porGes.top1.share, 1) +
+        '</b> da carteira. Risco de gestor não aparece na divisão por segmento — dois fundos de segmentos diferentes ' +
+        'do mesmo gestor compartilham processo de decisão, equipe e, quase sempre, posições.')));
+    }
+    /* HHI é número de especialista; o inverso dele é leitura de qualquer um.
+       As duas formas aparecem juntas, com o nome de cada uma. */
+    body.appendChild(U().insightNode(ins(porFundo.equivalentes < porFundo.n * 0.6 ? 'warn' : 'info',
+      porFundo.equivalentes < porFundo.n * 0.6 ? '⚠' : 'ⓘ',
+      'São <b>' + porFundo.n + ' aplicações</b>, mas a concentração faz a carteira se comportar como se fossem <b>' +
+      num(porFundo.equivalentes, 1) + ' de mesmo tamanho</b> (inverso do HHI bruto de ' + num(porFundo.hhiBruto, 3) +
+      '; o HHI normalizado que o agente usa nas demais telas é ' + num(porFundo.hhi * 100, 0) + '/100). ' +
+      porFundo.para80 + ' de ' + porFundo.n + ' aplicações concentram 80% do valor.')));
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Esta tela lê <b>posição</b>, não rentabilidade: o arquivo não traz série de cota. ' +
+      'Para comparar desempenho dos fundos desta carteira, carregue o informe diário da CVM com os mesmos CNPJs ' +
+      'e pergunte "comparar fundos".')));
+
+    foot(body, question, plan, ds, rows.length);
+  };
+
+  AG.fundosUI = { achaBenchmark, taxaMeta };
 })();
 
 </script>
