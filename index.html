@@ -226,6 +226,7 @@ button { cursor: pointer; }
 .selo-block { border-color: rgba(208,59,59,.5);  color: var(--critical); }
 .selo-key   { border-color: rgba(250,178,25,.5); color: var(--warning); }
 .selo-file  { border-color: var(--border-strong); }
+.selo-naoaud { border-color: rgba(144,133,233,.55); color: #b3aaf2; }
 .url-montada {
   display: block; font-family: var(--mono); font-size: 11.5px; word-break: break-all;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
@@ -259,6 +260,9 @@ button { cursor: pointer; }
 .marca.ruim { border-color: rgba(208,59,59,.5); color: var(--critical); }
 .passos { margin: 9px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.65; }
 .passos li { margin-bottom: 3px; }
+.chk { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+.chk input { margin-top: 2px; flex: none; }
+.baixar-base .fonte-item { padding: 10px 12px; }
 
 /* personalização do cartão: título, forma, altura, posição */
 .card { position: relative; }
@@ -2204,6 +2208,253 @@ AG.colorFor = function (key, index) {
 })();
 
 
+/* ==== 27-xlsx-write.js ==== */
+/* ============================================================
+   27 — ESCRITA DE XLSX
+   O agente já lia XLSX (ZIP + XML, com DecompressionStream). Aqui ele passa
+   a escrever, e sem nenhuma dependência: um ZIP com entradas ARMAZENADAS
+   (método 0, sem compressão) é um formato de poucas dezenas de linhas, e
+   dispensa um compressor inteiro no arquivo.
+
+   Por que XLSX e não só CSV: CSV não tem tipo. O CNPJ vira notação
+   científica, o código do IBGE perde o zero à esquerda, a data vira texto e
+   o número com vírgula decimal vira texto em máquina configurada em inglês.
+   Quem recebe a base num município abre no Excel — e é lá que esses quatro
+   erros aparecem. No XLSX o número é número, a data é data e o código é
+   texto porque foi declarado texto.
+   ============================================================ */
+
+(function () {
+  /* --------- CRC32, exigido pelo cabeçalho de cada entrada --------- */
+  let TAB = null;
+  function tabela() {
+    if (TAB) return TAB;
+    TAB = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      TAB[n] = c >>> 0;
+    }
+    return TAB;
+  }
+  function crc32(bytes) {
+    const t = tabela();
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  /* --------- ZIP com entradas armazenadas --------- */
+  function zip(entradas) {
+    const enc = new TextEncoder();
+    const partes = [], central = [];
+    let offset = 0;
+    const agora = new Date();
+    const hora = ((agora.getHours() << 11) | (agora.getMinutes() << 5) | (agora.getSeconds() >> 1)) & 0xFFFF;
+    const data = (((agora.getFullYear() - 1980) << 9) | ((agora.getMonth() + 1) << 5) | agora.getDate()) & 0xFFFF;
+
+    for (const e of entradas) {
+      const nome = enc.encode(e.nome);
+      const dados = typeof e.dados === 'string' ? enc.encode(e.dados) : e.dados;
+      const crc = crc32(dados);
+
+      const lh = new Uint8Array(30 + nome.length);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);          // versão necessária
+      dv.setUint16(6, 0x0800, true);      // nome em UTF-8
+      dv.setUint16(8, 0, true);           // método 0 = armazenado
+      dv.setUint16(10, hora, true);
+      dv.setUint16(12, data, true);
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, dados.length, true);
+      dv.setUint32(22, dados.length, true);
+      dv.setUint16(26, nome.length, true);
+      dv.setUint16(28, 0, true);
+      lh.set(nome, 30);
+      partes.push(lh, dados);
+
+      const ch = new Uint8Array(46 + nome.length);
+      const cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, hora, true);
+      cv.setUint16(14, data, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, dados.length, true);
+      cv.setUint32(24, dados.length, true);
+      cv.setUint16(28, nome.length, true);
+      cv.setUint32(42, offset, true);
+      ch.set(nome, 46);
+      central.push(ch);
+
+      offset += lh.length + dados.length;
+    }
+
+    let tamCentral = 0;
+    for (const c of central) tamCentral += c.length;
+    const fim = new Uint8Array(22);
+    const fv = new DataView(fim.buffer);
+    fv.setUint32(0, 0x06054b50, true);
+    fv.setUint16(8, central.length, true);
+    fv.setUint16(10, central.length, true);
+    fv.setUint32(12, tamCentral, true);
+    fv.setUint32(16, offset, true);
+
+    return new Blob(partes.concat(central, [fim]), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  /* --------- XLSX --------- */
+  const escX = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    /* caracteres de controle são ilegais em XML e fazem o Excel recusar o
+       arquivo inteiro com "conteúdo ilegível" — some com eles antes */
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+  function coluna(n) {
+    let s = '';
+    n += 1;
+    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  /** Serial do Excel: dias desde 30/12/1899, na hora local do valor. */
+  function serial(ms) {
+    return ms / 86400000 + 25569;
+  }
+
+  /**
+   * `colunas`: [{label, tipo}] com tipo em 'number' | 'date' | 'text'.
+   * `linhas`: array de arrays já na ordem das colunas.
+   */
+  function planilha(colunas, linhas, nomeAba) {
+    const larguras = colunas.map((c) => {
+      const n = Math.max(String(c.label).length + 2, c.tipo === 'date' ? 12 : 10);
+      return Math.min(52, n);
+    });
+
+    const sb = [];
+    sb.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
+    sb.push('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">');
+    sb.push('<cols>');
+    for (let i = 0; i < colunas.length; i++) {
+      sb.push('<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + larguras[i] + '" customWidth="1"/>');
+    }
+    sb.push('</cols><sheetData>');
+
+    // cabeçalho
+    sb.push('<row r="1">');
+    for (let i = 0; i < colunas.length; i++) {
+      sb.push('<c r="' + coluna(i) + '1" s="2" t="inlineStr"><is><t>' + escX(colunas[i].label) + '</t></is></c>');
+    }
+    sb.push('</row>');
+
+    for (let r = 0; r < linhas.length; r++) {
+      const ln = linhas[r], nr = r + 2;
+      sb.push('<row r="' + nr + '">');
+      for (let i = 0; i < colunas.length; i++) {
+        const v = ln[i];
+        if (v === null || v === undefined || v === '') continue;
+        const ref = coluna(i) + nr;
+        const t = colunas[i].tipo;
+        if (t === 'number' && typeof v === 'number' && isFinite(v)) {
+          sb.push('<c r="' + ref + '"><v>' + v + '</v></c>');
+        } else if (t === 'date') {
+          const ms = v instanceof Date ? v.getTime() : (typeof v === 'number' ? v : null);
+          if (ms === null || !isFinite(ms)) sb.push('<c r="' + ref + '" t="inlineStr"><is><t>' + escX(v) + '</t></is></c>');
+          else sb.push('<c r="' + ref + '" s="1"><v>' + serial(ms) + '</v></c>');
+        } else {
+          sb.push('<c r="' + ref + '" t="inlineStr"><is><t>' + escX(v) + '</t></is></c>');
+        }
+      }
+      sb.push('</row>');
+    }
+    sb.push('</sheetData><autoFilter ref="A1:' + coluna(colunas.length - 1) + (linhas.length + 1) + '"/>');
+    sb.push('<sheetView workbookViewId="0"/>');
+    sb.push('</worksheet>');
+    void nomeAba;
+    return sb.join('');
+  }
+
+  const ESTILOS =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts>' +
+    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>' +
+    '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="3"><fill><patternFill patternType="none"/></fill>' +
+    '<fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="3">' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+    '</cellXfs></styleSheet>';
+
+  /**
+   * Monta o .xlsx completo. `abas`: [{nome, colunas, linhas}].
+   * Uma aba por chamada é o caso comum; a segunda costuma ser a procedência.
+   */
+  function xlsx(abas) {
+    const nomes = abas.map((a, i) => (a.nome || ('Planilha' + (i + 1))).replace(/[\\/*?:[\]]/g, ' ').slice(0, 31));
+    const entradas = [
+      {
+        nome: '[Content_Types].xml',
+        dados: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+          '<Default Extension="xml" ContentType="application/xml"/>' +
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+          abas.map((a, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) +
+            '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') +
+          '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+          '</Types>'
+      },
+      {
+        nome: '_rels/.rels',
+        dados: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+          '</Relationships>'
+      },
+      {
+        nome: 'xl/workbook.xml',
+        dados: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+          'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+          nomes.map((n, i) => '<sheet name="' + escX(n) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join('') +
+          '</sheets></workbook>'
+      },
+      {
+        nome: 'xl/_rels/workbook.xml.rels',
+        dados: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          abas.map((a, i) => '<Relationship Id="rId' + (i + 1) +
+            '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join('') +
+          '<Relationship Id="rId' + (abas.length + 1) +
+          '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+          '</Relationships>'
+      },
+      { nome: 'xl/styles.xml', dados: ESTILOS }
+    ];
+    for (let i = 0; i < abas.length; i++) {
+      entradas.push({
+        nome: 'xl/worksheets/sheet' + (i + 1) + '.xml',
+        dados: planilha(abas[i].colunas, abas[i].linhas, nomes[i])
+      });
+    }
+    return zip(entradas);
+  }
+
+  AG.xlsxWrite = { xlsx, zip, crc32, serial, coluna };
+})();
+
+
 /* ==== 30-profiler.js ==== */
 /* ============================================================
    30 — PERFIL DE DADOS: inferência de tipo, papel e qualidade
@@ -3260,7 +3511,115 @@ const FONTES = [
   auditoria:"ATENÇÃO — serviço pago, verificado em 05/09/2026: assinatura anunciada em três faixas, de municipal a inteligência de gabinete. Agrega fontes públicas que estão neste catálogo (TSE, IBGE); o que se compra é o tratamento e a interface, não exclusividade do dado.",
   doc:"https://datapedia.info/",
   chave:["datapedia","eleitoral","tse","emendas","ods","bairro","local de votacao","pago"]
-}
+},
+
+/* --- fontes acrescentadas em 12/09/2026, a partir do mapa de módulos de um
+   painel fiscal em produção. Nenhuma foi auditada no navegador daqui: as que
+   têm endpoint de API entram como `naoaud` e são auditadas pelo primeiro
+   clique em "Testar agora"; as que são portal de download ou painel de
+   consulta entram como tais, porque isso é verificável pela natureza da
+   fonte, não por uma requisição. -------------------------------------- */
+{ id:"finbra", nome:"FINBRA — Finanças do Brasil (contas anuais dos entes)", org:"Tesouro Nacional",
+  dom:"fiscal", acesso:"file", gran:"municipio", core:true, peso:96,
+  desc:"A consolidação anual das contas de todos os estados e municípios: receitas orçamentárias por natureza (tributária, transferências, arrecadação própria), despesas por função e por categoria econômica, balanço patrimonial e dívida. É a base para comparar a arrecadação de um ente com a dos seus pares — e a que responde 'quanto este município arrecada de ISS contra municípios do mesmo porte'.",
+  base:"https://siconfi.tesouro.gov.br/siconfi/pages/public/consulta_finbra/finbra_list.jsf",
+  formato:"CSV e XLSX por exercício e por tipo de demonstrativo",
+  periodicidade:"Anual, com prazo de entrega em maio",
+  cobertura:"Brasil — 27 UFs e 5.570 municípios, séries desde 2013 no formato atual",
+  auditoria:"Não auditada no navegador. É página de consulta com download por exercício: escolha o ano, o tipo de demonstrativo (Receitas Orçamentárias, Despesas por Função, DCA completa) e a esfera. O dado por trás é o mesmo da DCA, que tem API — para um ente só, a API do SICONFI sai mais rápido; para comparar todos, o FINBRA é o caminho.",
+  doc:"https://www.tesourotransparente.gov.br/temas/contabilidade-e-custos/conta-anual-do-governo",
+  equivale:"siconfi-dca",
+  chave:["finbra","contas anuais","arrecadacao","receita orcamentaria","despesa por funcao","iss","iptu","comparar municipios","estados"] },
+
+{ id:"siops", nome:"SIOPS — orçamento público em saúde", org:"Ministério da Saúde / DATASUS",
+  dom:"setorial", acesso:"painel", gran:"municipio", peso:78,
+  desc:"Receitas e despesas em saúde declaradas por estados e municípios, com o percentual mínimo constitucional aplicado (15% para município, 12% para estado). É a fonte para o indicador de aplicação mínima em saúde — que, junto com o de educação, decide parecer prévio de conta.",
+  base:"https://siops.datasus.gov.br/",
+  formato:"Consulta em tela, com exportação por município e exercício",
+  periodicidade:"Bimestral (declaração) e anual (consolidação)",
+  cobertura:"Brasil — todos os entes",
+  auditoria:"Não auditada no navegador. Portal de consulta do DATASUS com relatórios por ente e exercício; a exportação sai por consulta, não por arquivo único.",
+  doc:"https://siops.datasus.gov.br/",
+  chave:["siops","saude","minimo constitucional","15%","aplicacao em saude","despesa com saude"] },
+
+{ id:"siope", nome:"SIOPE — orçamento público em educação", org:"FNDE / MEC",
+  dom:"setorial", acesso:"painel", gran:"municipio", peso:76,
+  desc:"O par do SIOPS para educação: receitas de impostos e despesas em manutenção e desenvolvimento do ensino, com o percentual mínimo de 25%. Traz também a aplicação dos recursos do FUNDEB e o percentual em remuneração dos profissionais do magistério.",
+  base:"https://www.fnde.gov.br/siope/",
+  formato:"Consulta em tela, com relatórios por ente",
+  periodicidade:"Bimestral e anual",
+  cobertura:"Brasil — todos os entes",
+  auditoria:"Não auditada no navegador. Portal de consulta do FNDE; os demonstrativos saem por ente e exercício.",
+  doc:"https://www.fnde.gov.br/siope/",
+  chave:["siope","educacao","25%","fundeb","magisterio","mde","minimo em educacao"] },
+
+{ id:"transferegov", nome:"TransfereGov — convênios e transferências voluntárias", org:"Ministério da Gestão",
+  dom:"fiscal", acesso:"naoaud", gran:"municipio", peso:82,
+  desc:"O sistema que substituiu o SICONV: propostas, convênios, contratos de repasse, termos de fomento, valores pactuados e liberados, situação da prestação de contas. Responde quanto um ente captou de transferência voluntária e quanto ainda está pendente de prestação.",
+  base:"https://api.transferegov.gestao.gov.br/convenios/",
+  params:[P("limit","100",false,"tamanho da página"),P("offset","0",false,"deslocamento")],
+  formato:"JSON (API de dados abertos, padrão PostgREST)",
+  periodicidade:"Diária",
+  cobertura:"Brasil — convênios federais desde 2008",
+  auditoria:"ENTROU SEM AUDITORIA em 12/09/2026. A API de dados abertos do TransfereGov é documentada e pública, mas não foi testada no navegador daqui — clique em Testar agora e o resultado fica gravado como auditoria sua, com a data.",
+  doc:"https://www.gov.br/transferegov/pt-br",
+  chave:["transferegov","siconv","convenio","transferencia voluntaria","repasse","emenda","prestacao de contas"] },
+
+{ id:"pgfn-divida", nome:"PGFN — devedores inscritos em dívida ativa da União", org:"Procuradoria-Geral da Fazenda Nacional",
+  dom:"fiscal", acesso:"file", gran:"empresa", peso:80,
+  desc:"A lista completa de inscritos em dívida ativa da União, com CPF/CNPJ, nome, tipo de devedor, situação e valor consolidado. Cruzada com a base de fornecedores de um ente, mostra quem está contratando com o poder público enquanto deve à União.",
+  base:"https://dadosabertos.pgfn.gov.br/",
+  formato:"CSV compactado, dividido por unidade da federação e por tipo de dívida",
+  periodicidade:"Trimestral",
+  cobertura:"Brasil — milhões de inscrições",
+  auditoria:"Não auditada no navegador. Portal de dados abertos com arquivos por trimestre e UF; o volume é alto, então filtre por UF antes de trazer para o agente.",
+  doc:"https://www.gov.br/pgfn/pt-br/assuntos/divida-ativa-da-uniao",
+  chave:["pgfn","divida ativa","devedor","inscricao","uniao","cnpj devedor","certidao"] },
+
+{ id:"firjan-ifgf", nome:"Firjan — Índice de Gestão Fiscal (IFGF)", org:"Sistema Firjan",
+  dom:"fiscal", acesso:"file", gran:"municipio", peso:70,
+  desc:"Índice de gestão fiscal municipal em quatro pilares: autonomia, gastos com pessoal, liquidez e investimentos. Não é fonte primária — é leitura sobre os dados do SICONFI —, mas é a referência que prefeitura e banco costumam citar na mesma mesa.",
+  base:"https://www.firjan.com.br/ifgf/",
+  formato:"Planilha anual com o índice e os pilares por município",
+  periodicidade:"Anual",
+  cobertura:"Brasil — municípios que entregaram a declaração no prazo",
+  auditoria:"Não auditada no navegador. Publicação com download de planilha; a metodologia e os recortes vêm no mesmo pacote. Como é indicador derivado, confira o ano-base antes de comparar com número do SICONFI.",
+  doc:"https://www.firjan.com.br/ifgf/",
+  equivale:"siconfi-dca",
+  chave:["firjan","ifgf","gestao fiscal","indice","autonomia","liquidez","investimento"] },
+
+{ id:"tcu-obras", nome:"TCU — obras públicas e acórdãos", org:"Tribunal de Contas da União",
+  dom:"compras", acesso:"painel", gran:"contrato", peso:68,
+  desc:"Painel de obras com indícios de irregularidade ou paralisação, e a base de acórdãos com deliberações sobre entes e empresas. É onde se checa se um fornecedor ou uma obra já apareceu em fiscalização.",
+  base:"https://pesquisa.apps.tcu.gov.br/",
+  formato:"Consulta em tela; alguns painéis exportam",
+  periodicidade:"Contínua",
+  cobertura:"Brasil — recursos federais",
+  auditoria:"Não auditada no navegador. Pesquisa integrada do TCU e painéis específicos (obras paralisadas, Fiscalis). A exportação depende do painel.",
+  doc:"https://portal.tcu.gov.br/inicio/",
+  chave:["tcu","acordao","obra parada","irregularidade","fiscalizacao","paralisada"] },
+
+{ id:"fns-fundo", nome:"Fundo Nacional de Saúde — repasses fundo a fundo", org:"Ministério da Saúde",
+  dom:"setorial", acesso:"painel", gran:"municipio", peso:72,
+  desc:"Pagamentos do FNS a estados e municípios por bloco de financiamento, componente e competência. É a contrapartida da receita de transferência da saúde que aparece no RREO — e a forma de conferir se o que foi declarado como recebido bate com o que foi repassado.",
+  base:"https://portalfns.saude.gov.br/consultar-pagamentos/",
+  formato:"Consulta em tela com exportação por competência",
+  periodicidade:"Mensal",
+  cobertura:"Brasil — todos os entes",
+  auditoria:"Não auditada no navegador. Consulta pública de pagamentos por ente e competência.",
+  doc:"https://portalfns.saude.gov.br/",
+  chave:["fns","fundo a fundo","repasse","saude","bloco de financiamento","competencia"] },
+
+{ id:"cnj-precatorios", nome:"CNJ — precatórios e Justiça em Números", org:"Conselho Nacional de Justiça",
+  dom:"fiscal", acesso:"painel", gran:"instituicao", peso:60,
+  desc:"Painéis de precatórios por tribunal e ente devedor, e a base Justiça em Números. O estoque de precatórios entra na análise de capacidade de pagamento e no cálculo da dívida consolidada.",
+  base:"https://www.cnj.jus.br/programas-e-acoes/precatorios/",
+  formato:"Painéis e planilhas por tribunal",
+  periodicidade:"Anual, com atualizações",
+  cobertura:"Brasil — tribunais estaduais e federais",
+  auditoria:"Não auditada no navegador. Publicação em painel; o dado por ente devedor depende do tribunal.",
+  doc:"https://www.cnj.jus.br/",
+  chave:["cnj","precatorio","justica em numeros","tribunal","ente devedor","estoque"] }
 ];
 
 const RECEITAS = [
@@ -3338,7 +3697,13 @@ const ACESSOS = {
   key:{ rot:"Exige chave de API", cls:"b-key", curto:"Chave" },
   block:{ rot:"CORS negado — via arquivo", cls:"b-block", curto:"Sem CORS" },
   file:{ rot:"Só download — sem API", cls:"b-file", curto:"Só download" },
-  painel:{ rot:"Painel de consulta — sem dado bruto", cls:"b-panel", curto:"Painel" }
+  painel:{ rot:"Painel de consulta — sem dado bruto", cls:"b-panel", curto:"Painel" },
+  /* Entrou no catálogo depois da auditoria de campo e ainda não foi testada
+     no navegador. Dizer "API direta" sem ter testado seria inventar promessa;
+     dizer "bloqueada" sem ter testado seria injustiça com a fonte. Fica assim,
+     e o clique do usuário em "Testar agora" vira a auditoria — o resultado é
+     gravado e passa a valer como selo, com a data. */
+  naoaud:{ rot:"Sem auditoria — teste você mesmo", cls:"b-naoaud", curto:"Não auditada" }
 };
 
 const GRANS = {
@@ -3530,6 +3895,7 @@ const RECEITAS_ARQUIVO = [
     patterns: {},     // assinatura da pergunta -> plano salvo
     feedback: {},     // assinatura -> {up, down}
     unresolved: [],   // perguntas que falharam, aguardando ensino
+    auditorias: {},   // id da fonte -> resultado do último teste feito pelo usuário
     updatedAt: null
   };
   AG.KB = KB;
@@ -3589,15 +3955,37 @@ const RECEITAS_ARQUIVO = [
     return JSON.parse(JSON.stringify({
       version: KB.version, terms: KB.terms, metrics: KB.metrics,
       patterns: KB.patterns, feedback: KB.feedback,
+      auditorias: KB.auditorias || {},
       unresolved: KB.unresolved.slice(-80), updatedAt: KB.updatedAt
     }));
   }
+
+  /* =========================================================
+     AUDITORIA DE FONTE FEITA PELO PRÓPRIO USUÁRIO
+     O catálogo vem com a auditoria de CORS que foi possível fazer na
+     origem. Para o que entrou depois, sem teste, o clique em "Testar agora"
+     é a auditoria: o resultado fica gravado aqui e passa a valer como selo,
+     com a data. É o mesmo princípio do resto do agente — ele aprende com o
+     uso em vez de fingir que já sabia.
+     ========================================================= */
+  function registrarAuditoria(id, r) {
+    if (!id) return;
+    KB.auditorias = KB.auditorias || {};
+    KB.auditorias[id] = {
+      quando: Date.now(), ok: !!r.ok, status: r.status,
+      ms: r.ms, linhas: r.linhas === undefined ? null : r.linhas,
+      erro: r.erro || null
+    };
+    persist();
+  }
+  function auditoriaDe(id) { return (KB.auditorias || {})[id] || null; }
   async function load() {
     const saved = await idbGet('kb');
     if (saved && saved.terms) {
       KB.terms = saved.terms || {};
       KB.metrics = saved.metrics || {};
       KB.patterns = saved.patterns || {};
+      KB.auditorias = saved.auditorias || {};
       KB.feedback = saved.feedback || {};
       KB.unresolved = saved.unresolved || [];
       KB.updatedAt = saved.updatedAt || null;
@@ -3887,6 +4275,7 @@ const RECEITAS_ARQUIVO = [
   AG.kb = {
     KB, load, persist, serialize, importKB, addTerm, removeTerm, seedFromDatasets,
     resolve, reward, punish, signature, rememberPattern, recallPattern,
+    registrarAuditoria, auditoriaDe,
     recordFeedback, logUnresolved, upsertMetric, metricsFor, defaultAgg, distinctValues,
     LEXICON
   };
@@ -10234,6 +10623,10 @@ const RECEITAS_ARQUIVO = [
           }),
           el('span', { class: 'src-name', text: ds.name, title: ds.name }),
           el('button', { class: 'icon-btn', text: '⋯', title: 'Detalhes', onclick: () => ds.kind === 'doc' ? openDocInfo(ds) : openSchema(ds) }),
+          ds.kind === 'table' ? el('button', {
+            class: 'icon-btn', text: '⭳', title: 'Baixar esta base (Excel, CSV ou JSON)',
+            onclick: () => AG.exportar.abrir(ds)
+          }) : null,
           el('button', { class: 'icon-btn', text: '✕', title: 'Remover', onclick: () => removeDataset(ds) })
         ]),
         el('div', {
@@ -16990,6 +17383,12 @@ const RECEITAS_ARQUIVO = [
         linhas: linhas, bruto: j, paginas: paginas, truncou: truncou,
         nome: nome, url: url
       });
+      if (f.id && AG.kb && AG.kb.registrarAuditoria) {
+        AG.kb.registrarAuditoria(f.id, {
+          ok: r.ok && !!(linhas && linhas.length), status: r.status,
+          ms: Date.now() - t0, linhas: linhas ? linhas.length : 0
+        });
+      }
 
       if (!linhas || !linhas.length) return;
       if (!cfg.ingerir) return;
@@ -17005,6 +17404,9 @@ const RECEITAS_ARQUIVO = [
         out.appendChild(aviso('crit', 'Os registros vieram, mas não formaram uma tabela utilizável.'));
       }
     } catch (e) {
+      if (f.id && AG.kb && AG.kb.registrarAuditoria) {
+        AG.kb.registrarAuditoria(f.id, { ok: false, status: 0, ms: Date.now() - t0, erro: String(e.message || e) });
+      }
       const abortado = e.name === 'AbortError';
       out.appendChild(aviso('crit', abortado
         ? 'A requisição passou de dois minutos sem resposta. Reduza o período ou o tamanho da página.'
@@ -17241,8 +17643,23 @@ const RECEITAS_ARQUIVO = [
     ]);
   }
 
+  /* O selo mostra a auditoria de campo quando ela existe. Para as fontes que
+     entraram sem teste, o clique do próprio usuário em "Testar agora" vira a
+     auditoria: fica gravado e passa a valer aqui, com a data. */
+  function auditoriaLocal(f) {
+    return (AG.kb && AG.kb.auditoriaDe) ? AG.kb.auditoriaDe(f.id) : null;
+  }
   function selo(f) {
     const a = F.ACESSOS[f.acesso] || { rot: f.acesso, cls: '' };
+    const loc = auditoriaLocal(f);
+    if (loc && f.acesso === 'naoaud') {
+      const quando = AG.fmtDate(loc.quando);
+      return el('span', {
+        class: 'selo selo-' + (loc.ok ? 'live' : 'block'),
+        title: 'auditado por você em ' + quando,
+        text: (loc.ok ? 'Respondeu ao navegador' : 'Recusou o navegador') + ' · seu teste de ' + quando
+      });
+    }
     return el('span', { class: 'selo selo-' + f.acesso, text: a.rot || f.acesso });
   }
 
@@ -17377,6 +17794,18 @@ const RECEITAS_ARQUIVO = [
       body.appendChild(dl);
     }
 
+    const loc = auditoriaLocal(f);
+    if (loc) {
+      body.appendChild(AG.ui.insightNode(AG.insights.ins(
+        loc.ok ? 'good' : 'warn', loc.ok ? '✓' : '⚠',
+        '<b>Seu teste em ' + AG.fmtDate(loc.quando) + ':</b> ' +
+        (loc.ok
+          ? 'respondeu HTTP ' + loc.status + ' em ' + loc.ms + ' ms' +
+            (loc.linhas ? ', com ' + AG.fmtNum(loc.linhas) + ' registros' : '') +
+            '. Esta fonte responde ao navegador a partir desta máquina.'
+          : 'não respondeu' + (loc.erro ? ' — <b>' + AG.esc(loc.erro) + '</b>' : '') +
+            '. Quase sempre é CORS, e não há como o navegador contornar.'))));
+    }
     if (f.auditoria) {
       body.appendChild(AG.ui.insightNode(AG.insights.ins(
         f.acesso === 'live' ? 'good' : f.acesso === 'block' ? 'warn' : 'info',
@@ -18550,6 +18979,246 @@ const RECEITAS_ARQUIVO = [
   };
 
   AG.fundosUI = { achaBenchmark, taxaMeta };
+})();
+
+
+/* ==== 93-exportar.js ==== */
+/* ============================================================
+   93 — BAIXAR A BASE
+   Toda base que está no agente pode sair dele: a carregada, a cruzada e a
+   trazida de uma fonte pública. Três formatos, e uma decisão em cada saída.
+
+   As decisões que essa tela toma, e por que:
+
+   1. FILTRO ATIVO É PERGUNTADO, NÃO ASSUMIDO. Baixar "a base" com os filtros
+      da tela aplicados em silêncio produz um arquivo que não corresponde ao
+      nome — e ninguém descobre isso até cruzar com outra coisa. As duas
+      opções aparecem com a contagem de linhas de cada uma.
+   2. COLUNAS DERIVADAS SÃO OPCIONAIS E MARCADAS. As faixas e partes de data
+      que o agente criou não existem no arquivo de origem; vão como colunas
+      extras, identificadas, e podem ficar de fora.
+   3. A PROCEDÊNCIA VAI JUNTO. No XLSX, uma segunda aba diz de onde a base
+      veio, quando foi baixada, que filtros estavam aplicados e — quando é
+      base cruzada — qual foi a chave e quanto casou. Planilha sem procedência
+      vira "aquele arquivo do WhatsApp" em duas semanas.
+   ============================================================ */
+
+(function () {
+  const el = AG.el;
+
+  /* =========================================================
+     MATERIALIZAÇÃO
+     ========================================================= */
+  function colunasDe(ds, incluirDerivadas) {
+    return ds.columns.filter((c) => incluirDerivadas || !c.virtual);
+  }
+  function tipoDe(c) {
+    if (c.role === 'time') return 'date';
+    /* id e código não são número, ainda que pareçam: exportar CNPJ ou código
+       do IBGE como número perde o zero à esquerda e vira notação científica */
+    if (c.role === 'measure') return 'number';
+    return 'text';
+  }
+  function valorTexto(v, tipo) {
+    if (v === null || v === undefined) return '';
+    if (tipo === 'date') {
+      const ms = v instanceof Date ? v.getTime() : v;
+      return typeof ms === 'number' && isFinite(ms) ? AG.fmtDate(ms) : String(v);
+    }
+    if (tipo === 'number' && typeof v === 'number') return String(v).replace('.', ',');
+    return String(v);
+  }
+
+  function linhasDe(ds, cols, filtrado) {
+    const rows = filtrado ? AG.engine.applyFilters(ds, { filters: AG.APP.filters || [] }) : ds.rows;
+    return { rows: rows, cols: cols };
+  }
+
+  /* =========================================================
+     FORMATOS
+     ========================================================= */
+  /** CSV com BOM e ponto-e-vírgula: é o que o Excel em pt-BR abre certo. */
+  function paraCSV(ds, cols, rows) {
+    const cel = (s) => {
+      const t = String(s === null || s === undefined ? '' : s);
+      return /[";\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    const out = [cols.map((c) => cel(c.label)).join(';')];
+    for (const r of rows) {
+      const linha = [];
+      for (const c of cols) linha.push(cel(valorTexto(r[c.key], tipoDe(c))));
+      out.push(linha.join(';'));
+    }
+    return '﻿' + out.join('\r\n');
+  }
+
+  function paraJSON(ds, cols, rows) {
+    const out = [];
+    for (const r of rows) {
+      const o = {};
+      for (const c of cols) {
+        const v = r[c.key];
+        if (tipoDe(c) === 'date' && typeof v === 'number' && isFinite(v)) o[c.label] = new Date(v).toISOString().slice(0, 10);
+        else o[c.label] = v === undefined ? null : v;
+      }
+      out.push(o);
+    }
+    return JSON.stringify(out, null, 1);
+  }
+
+  function abaProcedencia(ds, cols, nLinhas, filtrado) {
+    const linhas = [
+      ['Base', ds.name],
+      ['Baixada em', new Date().toLocaleString('pt-BR')],
+      ['Linhas no arquivo', String(nLinhas)],
+      ['Linhas na base', String(ds.rowCount)],
+      ['Colunas', String(cols.length)],
+      ['Gerado por', 'Agente Analítico Offline — processamento local, nenhum dado saiu da máquina']
+    ];
+    if (ds.origem) linhas.splice(1, 0, ['Origem', String(ds.origem)]);
+    if (ds.meta && ds.meta.format) linhas.splice(1, 0, ['Formato de origem', String(ds.meta.format)]);
+    if (ds.derived && ds.joinDiag) {
+      const j = ds.joinDiag;
+      linhas.push(['Base cruzada', 'sim']);
+      if (j.leftLabel && j.rightLabel) linhas.push(['Chave do cruzamento', j.leftLabel + ' ↔ ' + j.rightLabel]);
+      if (typeof j.matchRate === 'number') linhas.push(['Taxa de casamento', AG.fmtPct(j.matchRate, 1)]);
+      if (j.fanOut) linhas.push(['Aviso', 'o cruzamento multiplica linhas (fan-out): somas podem estar infladas']);
+    }
+    const f = (AG.APP.filters || []);
+    linhas.push(['Filtros aplicados', filtrado && f.length
+      ? f.map((x) => rotuloFiltro(ds, x)).join(' · ')
+      : (f.length ? 'nenhum (a base saiu inteira, apesar de haver filtro na tela)' : 'nenhum')]);
+    const derivadas = cols.filter((c) => c.virtual);
+    if (derivadas.length) {
+      linhas.push(['Colunas criadas pelo agente', derivadas.map((c) => c.label).join(', ') +
+        ' — não existem no arquivo de origem']);
+    }
+    return {
+      nome: 'Procedência',
+      colunas: [{ label: 'Item', tipo: 'text' }, { label: 'Valor', tipo: 'text' }],
+      linhas: linhas
+    };
+  }
+  function rotuloFiltro(ds, f) {
+    const c = ds.columns.find((x) => x.key === f.column);
+    return (c ? c.label : f.column) + ' ' + (f.op || '=') + ' ' + [].concat(f.value).join(', ');
+  }
+
+  function paraXLSX(ds, cols, rows, filtrado) {
+    const colunas = cols.map((c) => ({ label: c.label, tipo: tipoDe(c) }));
+    const linhas = rows.map((r) => cols.map((c) => {
+      const v = r[c.key];
+      const t = tipoDe(c);
+      if (t === 'number') return typeof v === 'number' && isFinite(v) ? v : (v === null || v === undefined ? '' : String(v));
+      if (t === 'date') return typeof v === 'number' && isFinite(v) ? v : (v instanceof Date ? v.getTime() : (v === null || v === undefined ? '' : String(v)));
+      return v === null || v === undefined ? '' : String(v);
+    }));
+    const aba = { nome: (ds.name || 'Dados').slice(0, 28), colunas: colunas, linhas: linhas };
+    return AG.xlsxWrite.xlsx([aba, abaProcedencia(ds, cols, rows.length, filtrado)]);
+  }
+
+  /* =========================================================
+     EXECUÇÃO
+     ========================================================= */
+  const TETO_LINHAS = 250000;
+
+  function baixar(ds, formato, opts) {
+    const o = opts || {};
+    const cols = colunasDe(ds, o.derivadas !== false);
+    const { rows } = linhasDe(ds, cols, !!o.filtrado);
+    if (!rows.length) { AG.toast('Nada a baixar: o recorte não tem linhas.'); return null; }
+
+    const base = AG.slug(ds.name || 'base').slice(0, 40) + (o.filtrado ? '-filtrado' : '');
+    if (rows.length > TETO_LINHAS && formato === 'xlsx') {
+      AG.toast('Acima de ' + AG.fmtNum(TETO_LINHAS) + ' linhas o XLSX fica pesado demais para o navegador montar. Baixe em CSV.');
+      return null;
+    }
+    if (formato === 'csv') {
+      AG.download(base + '.csv', paraCSV(ds, cols, rows), 'text/csv;charset=utf-8');
+    } else if (formato === 'json') {
+      AG.download(base + '.json', paraJSON(ds, cols, rows), 'application/json');
+    } else {
+      const blob = paraXLSX(ds, cols, rows, !!o.filtrado);
+      AG.download(base + '.xlsx', blob);
+    }
+    AG.toast(AG.fmtNum(rows.length) + ' linhas × ' + cols.length + ' colunas em ' + formato.toUpperCase() + '.');
+    return { linhas: rows.length, colunas: cols.length };
+  }
+
+  /* =========================================================
+     JANELA
+     ========================================================= */
+  function abrir(ds) {
+    const body = el('div', { class: 'baixar-base' });
+    const filtros = (AG.APP.filters || []).filter((f) => ds.columns.some((c) => c.key === f.column));
+    const nFiltrado = filtros.length
+      ? AG.engine.applyFilters(ds, { filters: AG.APP.filters }).length : ds.rowCount;
+    const derivadas = ds.columns.filter((c) => c.virtual);
+
+    body.appendChild(el('div', { class: 'fonte-meta', text:
+      AG.fmtNum(ds.rowCount) + ' linhas · ' + ds.columns.filter((c) => !c.virtual).length + ' colunas' +
+      (derivadas.length ? ' + ' + derivadas.length + ' criada(s) pelo agente' : '') +
+      (ds.derived ? ' · base cruzada' : '') }));
+
+    /* --- recorte --- */
+    const estado = { filtrado: false, derivadas: true };
+    if (filtros.length) {
+      body.appendChild(el('h3', { class: 'sec-tit', text: 'O que baixar' }));
+      const grupo = el('div', { class: 'pill-row' });
+      const bTudo = el('button', { class: 'pill sel', text: 'Base inteira (' + AG.fmtNum(ds.rowCount) + ' linhas)' });
+      const bFil = el('button', { class: 'pill', text: 'Só o recorte da tela (' + AG.fmtNum(nFiltrado) + ' linhas)' });
+      bTudo.addEventListener('click', () => { estado.filtrado = false; bTudo.classList.add('sel'); bFil.classList.remove('sel'); });
+      bFil.addEventListener('click', () => { estado.filtrado = true; bFil.classList.add('sel'); bTudo.classList.remove('sel'); });
+      grupo.appendChild(bTudo); grupo.appendChild(bFil);
+      body.appendChild(grupo);
+      body.appendChild(el('div', { class: 'hint', html:
+        'Há filtro ativo na tela: <b>' + AG.esc(filtros.map((f) => rotuloFiltro(ds, f)).join(' · ')) + '</b>. ' +
+        'Escolha explicitamente — baixar filtrado sem saber gera um arquivo que não corresponde ao próprio nome.' }));
+    }
+
+    if (derivadas.length) {
+      const lab = el('label', { class: 'chk' });
+      const cx = el('input', { type: 'checkbox', checked: true });
+      cx.addEventListener('change', () => { estado.derivadas = cx.checked; });
+      lab.appendChild(cx);
+      lab.appendChild(el('span', { text: 'incluir as ' + derivadas.length + ' colunas criadas pelo agente (' +
+        derivadas.slice(0, 3).map((c) => c.label).join(', ') + (derivadas.length > 3 ? '…' : '') + ')' }));
+      body.appendChild(lab);
+    }
+
+    /* --- formatos --- */
+    body.appendChild(el('h3', { class: 'sec-tit', text: 'Formato' }));
+    const fmts = [
+      ['xlsx', 'Excel (.xlsx)', 'número é número, data é data, código continua com o zero à esquerda — e uma aba de procedência vai junto'],
+      ['csv', 'CSV (.csv)', 'ponto-e-vírgula e BOM, que é o que o Excel em português abre certo; qualquer ferramenta lê'],
+      ['json', 'JSON (.json)', 'para reprocessar em código; datas em ISO']
+    ];
+    const lista = el('div', { class: 'fontes-lista' });
+    for (const [k, rot, desc] of fmts) {
+      const c = el('div', { class: 'fonte-item' });
+      c.appendChild(el('div', { class: 'fonte-nome', text: rot }));
+      c.appendChild(el('div', { class: 'fonte-desc', text: desc }));
+      c.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [
+        el('button', {
+          class: 'btn sm primary', text: 'Baixar', onclick: () => {
+            baixar(ds, k, { filtrado: estado.filtrado, derivadas: estado.derivadas });
+          }
+        })
+      ]));
+      lista.appendChild(c);
+    }
+    body.appendChild(lista);
+
+    body.appendChild(el('div', { class: 'hint', style: { marginTop: '10px' },
+      html: 'O arquivo é montado <b>no seu navegador</b> e salvo direto na pasta de downloads — nada é enviado a lugar nenhum.' }));
+
+    const d = AG.modal('Baixar ' + ds.name, body, [
+      el('button', { class: 'btn', text: 'Fechar', onclick: () => d.close() })
+    ]);
+    return d;
+  }
+
+  AG.exportar = { abrir, baixar, paraCSV, paraJSON, paraXLSX, tipoDe, colunasDe };
 })();
 
 </script>
