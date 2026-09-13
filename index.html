@@ -264,6 +264,28 @@ button { cursor: pointer; }
 .chk input { margin-top: 2px; flex: none; }
 .baixar-base .fonte-item { padding: 10px 12px; }
 
+/* visões contábeis: composição aberta e o compositor */
+.visoes-lista { display: grid; gap: 10px; margin-top: 12px; }
+.contas-lista { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
+.contas-lista li { display: flex; gap: 10px; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+.contas-lista li:last-child { border-bottom: 0; }
+.conta-nome { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conta-valor { color: var(--text-primary); font-variant-numeric: tabular-nums; flex: none; }
+.compositor-resumo {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px 11px; font-size: 12.5px; color: var(--text-secondary); margin-bottom: 10px;
+}
+.compositor-resumo b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.contas-escolha { max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.conta-chk {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  padding: 7px 11px; border-bottom: 1px solid var(--grid); cursor: pointer; font-size: 12.5px;
+}
+.conta-chk:last-child { border-bottom: 0; }
+.conta-chk:hover { background: var(--surface-2); }
+.conta-chk.sel { background: #16283f; }
+
 /* personalização do cartão: título, forma, altura, posição */
 .card { position: relative; }
 .card-tools {
@@ -503,6 +525,9 @@ pre.plan-body .n { color: #c98500; }
   display: flex; align-items: center; gap: 10px;
 }
 .modal-head h3 { margin: 0; font-size: 14.5px; font-weight: 620; }
+.modal-head .voltar { font-size: 16px; margin-left: -4px; }
+.modal-head .voltar:hover { color: var(--series-1); }
+.modal-estreita { width: min(620px, 100%) !important; }
 .modal-head .spacer { flex: 1; }
 .modal-body { padding: 18px; overflow-y: auto; }
 .modal-foot { padding: 13px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
@@ -594,7 +619,7 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
           <button class="btn sm ghost" id="btn-demo">Dados de demonstração</button>
         </div>
         <div class="hint" style="margin-top:6px">
-          61 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
+          70 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
         </div>
       </div>
 
@@ -4583,6 +4608,7 @@ const RECEITAS_ARQUIVO = [
     { intent: 'boxplot', re: /(boxplot|box plot|caixa e bigode|dispersao por|distribuicao comparada|amplitude por)/ },
     /* --- camada financeira: antes das regras genéricas, porque "risco",
        "retorno" e "real" também aparecem em frases de ranking comum --- */
+    { intent: 'contabil', re: /(vis(ao|oes|ão|ões) cont[áa]bil|vis(ao|oes|ão|ões) cont[áa]beis|plano de contas|receita e despesa|despesa e receita|\brcl\b|\bdcl\b|resultado orcamentario|execucao orcamentaria|balanco orcamentario|por natureza (da )?(receita|despesa)|analise contabil|contas do ente|demonstrativo)/ },
     { intent: 'fincarteira', re: /(carteira do rpps|composicao da carteira|enquadramento|resolucao cmn|limites? (da )?cmn|\bdair\b|distribuicao por segmento|concentracao por gestor|quanto (tem|esta) em cada (fundo|segmento))/ },
     { intent: 'fincompara', re: /(comparar (os )?fundos|comparacao de fundos|comparador de fundos|ranking de fundos|melhores fundos|qual fundo (rende|rendeu|e melhor|foi melhor)|fundos? (que )?(bate[mu]?|superou|superam) o (cdi|benchmark|indice)|desempenho dos fundos|fundos lado a lado|compara[rc].{0,18}(fundos|cotas|gestores))/ },
     { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada|capacidade de pagamento|\bcapag\b)/ },
@@ -4633,7 +4659,7 @@ const RECEITAS_ARQUIVO = [
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
     finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
-    fincompara: 1, fincarteira: 1 };
+    fincompara: 1, fincarteira: 1, contabil: 1 };
   /* intenções que sem uma dimensão não têm o que mostrar */
   const NEEDS_DIM = { ranking: 1, distribution: 1, crosstab: 1, pivot: 1, abc: 1, compare: 1,
     movers: 1, contribution: 1, boxplot: 1, indexed: 1, scan: 1, multigroup: 1 };
@@ -10364,6 +10390,321 @@ const RECEITAS_ARQUIVO = [
 })();
 
 
+/* ==== 75-contabil.js ==== */
+/* ============================================================
+   75 — VISÕES CONTÁBEIS
+   Uma base contábil pública não se parece com uma planilha de negócio. No
+   SICONFI, no FINBRA, no RREO e no RGF, "Receita Corrente Líquida" não é uma
+   COLUNA: é uma LINHA, identificada por um código de conta, com o valor
+   noutra coluna e o estágio numa terceira. Um motor que só sabe somar
+   colunas não consegue responder nada sobre esses arquivos.
+
+   Este módulo faz três coisas, e cada uma existe por um motivo:
+
+   1. RECONHECE O FORMATO CONTA × VALOR e monta o plano de contas pela
+      hierarquia do código, que é o que dá o "por dentro" de cada total.
+   2. DEFINE AS VISÕES CANÔNICAS por regra explícita — cada visão diz QUAIS
+      contas somou. Um total contábil sem a lista do que entrou nele é um
+      número que ninguém consegue defender numa reunião.
+   3. NÃO ESCOLHE O ESTÁGIO DA DESPESA POR VOCÊ. Empenhada, liquidada e paga
+      dão três resultados diferentes para "resultado orçamentário", e a
+      diferença entre eles costuma ser o próprio problema que se investiga.
+      O estágio é sempre dito, e trocá-lo é um clique.
+   ============================================================ */
+
+(function () {
+  const norm = (s) => AG.norm(String(s === null || s === undefined ? '' : s));
+
+  /* =========================================================
+     RECONHECIMENTO DA BASE
+     ========================================================= */
+  const CONTA_RE = /(conta|natureza|rubrica|elemento|funcao|fun[çc][ãa]o|subfun|categoria econ|especifica|descri[çc][ãa]o da conta|titulo)/i;
+  const CODIGO_RE = /(cod.{0,3}conta|codigo|c[óo]digo|classifica|natureza da (receita|despesa)|conta cont)/i;
+  const VALOR_RE = /(valor|montante|saldo|realizad|empenhad|liquidad|pago|arrecadad|previs|dotacao|dota[çc][ãa]o)/i;
+  const ESTAGIO_RE = /(coluna|estagio|est[áa]gio|fase|tipo de valor|momento)/i;
+  const ENTE_RE = /(ente|instituicao|institui[çc][ãa]o|municipio|munic[íi]pio|uf\b|orgao|[óo]rg[ãa]o|cnpj)/i;
+
+  /**
+   * Base contábil = uma coluna que nomeia a conta + uma coluna de valor.
+   * O `estagio` (a coluna "coluna" do SICONFI) é opcional mas muda tudo:
+   * sem separar por estágio, somam-se previsão e realização no mesmo total.
+   */
+  function detectar(ds) {
+    const cols = ds.columns.filter((c) => !c.virtual);
+    const texto = cols.filter((c) => c.role === 'dimension' || c.role === 'text' || c.role === 'id');
+    const nums = cols.filter((c) => c.role === 'measure');
+
+    /* O CÓDIGO é detectado primeiro, e de propósito: "Cod Conta" também casa
+       com o padrão de "conta", e procurar a conta antes fazia o código virar
+       o nome da conta — a base inteira deixava de ser reconhecida porque
+       nenhum nome do vocabulário contábil aparecia num campo de dígitos. */
+    const colCodigo = texto.find((c) => CODIGO_RE.test(c.label)) || null;
+    const colConta = texto.find((c) => c !== colCodigo && /^(conta|descri|titulo|especifica)/i.test(c.label)) ||
+      texto.find((c) => c !== colCodigo && CONTA_RE.test(c.label)) || null;
+    const colValor = nums.find((c) => VALOR_RE.test(c.label)) || nums[0] || null;
+    const colEstagio = texto.find((c) => c !== colConta && c !== colCodigo && ESTAGIO_RE.test(c.label)) || null;
+    const colEnte = texto.find((c) => ENTE_RE.test(c.label) && c !== colConta && c !== colCodigo && c !== colEstagio) || null;
+    const colTempo = cols.find((c) => c.role === 'time') || null;
+    const colExerc = nums.find((c) => /exerc|\bano\b/i.test(c.label)) ||
+      texto.find((c) => /exerc|\bano\b/i.test(c.label)) || null;
+
+    if (!colConta || !colValor) {
+      return { ehContabil: false, colConta, colCodigo, colValor, colEstagio, colEnte, colTempo, colExerc };
+    }
+    /* uma base contábil repete a mesma conta em vários recortes e tem muito
+       mais linhas que contas distintas; uma planilha de negócio com uma
+       coluna "descrição" não tem esse formato */
+    const distintas = new Set();
+    for (const r of ds.rows) { distintas.add(r[colConta.key]); if (distintas.size > 4000) break; }
+    const razao = ds.rows.length / Math.max(1, distintas.size);
+    const nomesBatem = contaNomes(Array.from(distintas).slice(0, 400));
+
+    return {
+      ehContabil: nomesBatem >= 3 || (razao >= 2 && nomesBatem >= 1),
+      forca: nomesBatem, razao: razao, contasDistintas: distintas.size,
+      colConta, colCodigo, colValor, colEstagio, colEnte, colTempo, colExerc,
+      estagios: colEstagio ? valoresDe(ds, colEstagio) : [],
+      familias: colEstagio ? porFamilia(valoresDe(ds, colEstagio)) : { receita: [], despesa: [], outro: [] }
+    };
+  }
+  /* Estágio de receita e de despesa são famílias DIFERENTES: "Receitas
+     Realizadas" e "Despesas Empenhadas" convivem no mesmo arquivo, em linhas
+     distintas. Um seletor único zeraria a despesa em silêncio ao filtrar pelo
+     estágio da receita — por isso a escolha é uma por família, e o que não
+     pertence a nenhuma (saldo de dívida, por exemplo) passa direto. */
+  function familiaEstagio(v) {
+    const n = norm(v);
+    if (/receita|arrecad|previs/.test(n)) return 'receita';
+    if (/despesa|empenh|liquid|pago|paga|dotac/.test(n)) return 'despesa';
+    return 'outro';
+  }
+  function porFamilia(estagios) {
+    const out = { receita: [], despesa: [], outro: [] };
+    for (const e of estagios) out[familiaEstagio(e)].push(e);
+    return out;
+  }
+
+  function valoresDe(ds, c) {
+    const s = new Set();
+    for (const r of ds.rows) { const v = r[c.key]; if (v !== null && v !== undefined && v !== '') s.add(String(v)); if (s.size > 60) break; }
+    return Array.from(s);
+  }
+  /** Quantos nomes de conta do vocabulário público aparecem na base. */
+  const VOCAB = [
+    /receita/i, /despesa/i, /transfer[êe]ncia/i, /tribut/i, /pessoal e encargos/i,
+    /investimento/i, /amortiza/i, /juros/i, /d[íi]vida/i, /superavit|super[áa]vit|deficit|d[ée]ficit/i,
+    /corrente/i, /capital/i, /previdenc/i, /\bfundeb\b/i, /\bicms\b|\biss\b|\biptu\b|\bipva\b|\bfpm\b|\bfpe\b/i
+  ];
+  function contaNomes(amostra) {
+    let n = 0;
+    for (const re of VOCAB) if (amostra.some((x) => re.test(String(x)))) n++;
+    return n;
+  }
+
+  /* =========================================================
+     PLANO DE CONTAS PELA HIERARQUIA DO CÓDIGO
+     ========================================================= */
+  /** "4.5.1.2.00.00" → ["4","4.5","4.5.1",…]; nível = quantos segmentos úteis. */
+  function ancestrais(cod) {
+    const partes = String(cod).split(/[.\-\s]/).filter((x) => x !== '');
+    const out = [];
+    for (let i = 1; i <= partes.length; i++) {
+      const p = partes.slice(0, i);
+      // segmentos "00" no fim não são nível de verdade
+      if (p[p.length - 1].replace(/0/g, '') === '' && i > 1) break;
+      out.push(p.join('.'));
+    }
+    return out;
+  }
+  function nivelDe(cod) { return ancestrais(cod).length; }
+
+  /**
+   * Agrupa por conta e devolve a lista com código, nome, nível e total.
+   * Respeita o estágio quando ele existe — sem isso, previsão e realização
+   * entram na mesma soma e o total fica inflado sem aviso.
+   */
+  function contas(ds, det, opts) {
+    const o = opts || {};
+    const rows = o.rows || AG.engine.applyFilters(ds, o.plan || { filters: [] });
+    const m = new Map();
+    const escolhidos = o.estagios || {};
+    for (const r of rows) {
+      if (det.colEstagio) {
+        const e = String(r[det.colEstagio.key]);
+        const fam = familiaEstagio(e);
+        // só filtra dentro da família que tem escolha: o resto passa
+        if (fam !== 'outro' && escolhidos[fam] && e !== escolhidos[fam]) continue;
+      }
+      const nome = r[det.colConta.key];
+      if (nome === null || nome === undefined || nome === '') continue;
+      const cod = det.colCodigo ? r[det.colCodigo.key] : null;
+      const v = r[det.colValor.key];
+      if (typeof v !== 'number' || !isFinite(v)) continue;
+      const k = String(cod !== null && cod !== undefined && cod !== '' ? cod : nome);
+      if (!m.has(k)) m.set(k, { chave: k, codigo: cod === undefined ? null : cod, nome: String(nome), valor: 0, linhas: 0 });
+      const e = m.get(k);
+      e.valor += v; e.linhas++;
+    }
+    const out = Array.from(m.values());
+    for (const c of out) c.nivel = c.codigo ? nivelDe(c.codigo) : 1;
+    out.sort((a, b) => String(a.codigo || a.nome).localeCompare(String(b.codigo || b.nome), 'pt-BR', { numeric: true }));
+    return out;
+  }
+
+  /* =========================================================
+     AS VISÕES CANÔNICAS
+     Cada uma é uma REGRA legível, não um número mágico. `exato` casa o nome
+     inteiro (para linhas totalizadoras que o próprio demonstrativo publica),
+     `nome` casa por expressão e `cod` casa por prefixo do código.
+     ========================================================= */
+  const VISOES = [
+    { id: 'rcl', rot: 'Receita Corrente Líquida', grupo: 'receita', sinal: 1, chave: true,
+      exato: /^receita corrente liquida$|^rcl$|receita corrente liquida( - rcl)?$/,
+      nota: 'É a base de todos os limites da LRF. Confira se a apuração é dos ÚLTIMOS 12 MESES (art. 2º, IV) — trocar por RCL do exercício muda todo percentual.' },
+    { id: 'receita-total', rot: 'Receita total', grupo: 'receita', sinal: 1,
+      exato: /^receitas? (orcamentarias? )?totais?$|^total das receitas$|^receita total$/,
+      cod: /^1$/, nome: /^receitas? (orcamentarias?)?$/ },
+    { id: 'receita-corrente', rot: 'Receitas correntes', grupo: 'receita', sinal: 1,
+      exato: /^receitas? correntes$/, cod: /^1\.1$|^1\.7$/ },
+    { id: 'receita-capital', rot: 'Receitas de capital', grupo: 'receita', sinal: 1,
+      exato: /^receitas? de capital$/, cod: /^1\.2$|^2\.2$/ },
+    { id: 'receita-tributaria', rot: 'Receita tributária', grupo: 'receita', sinal: 1,
+      exato: /^receitas? tributarias?$/, nome: /receita tributaria/ },
+    { id: 'receita-propria', rot: 'Arrecadação própria (tributária + contribuições + patrimonial + serviços)',
+      grupo: 'receita', sinal: 1,
+      nome: /^(receitas? )?(tributarias?|de contribuic|patrimoniais?|de servicos?|agropecuaria|industrial)/ },
+    { id: 'transferencias', rot: 'Transferências correntes', grupo: 'receita', sinal: 1,
+      exato: /^transferencias correntes$/, nome: /^transferencias/ },
+
+    { id: 'despesa-total', rot: 'Despesa total', grupo: 'despesa', sinal: -1,
+      exato: /^despesas? (orcamentarias? )?totais?$|^total das despesas$|^despesa total$/,
+      cod: /^3$/, nome: /^despesas? (orcamentarias?)?$/ },
+    { id: 'despesa-corrente', rot: 'Despesas correntes', grupo: 'despesa', sinal: -1,
+      exato: /^despesas? correntes$/, cod: /^3\.1$/ },
+    { id: 'despesa-capital', rot: 'Despesas de capital', grupo: 'despesa', sinal: -1,
+      exato: /^despesas? de capital$/, cod: /^3\.2$|^4\.4$/ },
+    { id: 'pessoal', rot: 'Pessoal e encargos sociais', grupo: 'despesa', sinal: -1, chave: true,
+      exato: /^pessoal e encargos sociais$|^despesa (total )?com pessoal$/, nome: /pessoal e encargos|despesa com pessoal/,
+      nota: 'Limite de 60% da RCL para o ente e 54% para o Executivo municipal (LC 101/2000, art. 20).' },
+    { id: 'investimentos', rot: 'Investimentos', grupo: 'despesa', sinal: -1,
+      exato: /^investimentos$/, nome: /^investimentos/ },
+    { id: 'juros', rot: 'Juros e encargos da dívida', grupo: 'despesa', sinal: -1,
+      nome: /juros e encargos/ },
+    { id: 'amortizacao', rot: 'Amortização da dívida', grupo: 'despesa', sinal: -1,
+      nome: /amortizacao (da divida|de divida)/ },
+
+    { id: 'dcl', rot: 'Dívida Consolidada Líquida', grupo: 'divida', sinal: -1, chave: true,
+      exato: /^divida consolidada liquida$|^dcl$/,
+      nota: 'Limite de 120% da RCL para município e 200% para estado (Res. SF 40/2001).' },
+    { id: 'dc', rot: 'Dívida consolidada', grupo: 'divida', sinal: -1,
+      exato: /^divida consolidada$/, nome: /^divida consolidada($| -)/ },
+    { id: 'deducoes-divida', rot: 'Deduções da dívida (disponibilidade de caixa e haveres)', grupo: 'divida', sinal: 1,
+      nome: /^deducoes|disponibilidade de caixa|haveres financeiros/ }
+  ];
+
+  /** Casa uma visão contra a lista de contas, e devolve o que entrou. */
+  function casar(lista, def) {
+    /* a linha totalizadora que o próprio demonstrativo publica vale mais que
+       a soma das partes: usar as duas ao mesmo tempo dobraria o total */
+    const exatas = def.exato ? lista.filter((c) => def.exato.test(norm(c.nome))) : [];
+    if (exatas.length) return { contas: exatas, via: 'linha do próprio demonstrativo' };
+
+    const porCod = def.cod ? lista.filter((c) => c.codigo && def.cod.test(String(c.codigo).trim())) : [];
+    if (porCod.length) return { contas: porCod, via: 'código da conta' };
+
+    const porNome = def.nome ? lista.filter((c) => def.nome.test(norm(c.nome))) : [];
+    if (porNome.length) return { contas: porNome, via: 'nome da conta' };
+    return { contas: [], via: null };
+  }
+
+  /**
+   * Monta todas as visões que a base consegue sustentar. As que não acharam
+   * conta nenhuma NÃO entram: uma visão que soma zero por falta de dado é
+   * pior que uma visão ausente, porque parece resultado.
+   */
+  function visoes(ds, det, opts) {
+    const lista = contas(ds, det, opts);
+    const out = [];
+    for (const def of VISOES) {
+      const m = casar(lista, def);
+      if (!m.contas.length) continue;
+      let total = 0;
+      for (const c of m.contas) total += c.valor;
+      out.push({
+        id: def.id, rot: def.rot, grupo: def.grupo, sinal: def.sinal, chave: !!def.chave,
+        nota: def.nota || null, via: m.via, valor: total,
+        contas: m.contas, nContas: m.contas.length
+      });
+    }
+    return { visoes: out, lista: lista };
+  }
+
+  /**
+   * Resultado orçamentário. O estágio da despesa é PARÂMETRO, não escolha
+   * silenciosa: receita realizada menos despesa empenhada, liquidada ou paga
+   * são três respostas diferentes, e a distância entre elas costuma ser
+   * exatamente o que se quer investigar (restos a pagar).
+   */
+  function resultado(vs) {
+    const rec = vs.find((v) => v.id === 'receita-total') || vs.find((v) => v.id === 'receita-corrente');
+    const des = vs.find((v) => v.id === 'despesa-total') || vs.find((v) => v.id === 'despesa-corrente');
+    if (!rec || !des) return null;
+    return {
+      receita: rec.valor, despesa: des.valor, saldo: rec.valor - des.valor,
+      rotReceita: rec.rot, rotDespesa: des.rot,
+      cobertura: des.valor ? rec.valor / des.valor : null
+    };
+  }
+
+  /** Percentual de uma visão sobre a RCL, quando a RCL existe na base. */
+  function sobreRCL(vs, id) {
+    const rcl = vs.find((v) => v.id === 'rcl');
+    const alvo = vs.find((v) => v.id === id);
+    if (!rcl || !alvo || !(rcl.valor > 0)) return null;
+    return Math.abs(alvo.valor) / rcl.valor;
+  }
+
+  /**
+   * Converte uma visão num KPI do agente: filtro `in` sobre as contas que
+   * a compõem. Assim ela vale nas perguntas, no painel, no relatório e no
+   * painel exportado — sem nenhuma máquina nova.
+   */
+  function comoKPI(ds, det, visao, estagios) {
+    const k = AG.composer.blankKpi(ds.id);
+    k.nome = visao.rot;
+    k.tipo = 'metric';
+    k.measure = { column: det.colValor.key, agg: 'sum' };
+    k.format = 'currency';
+    k.filters = [{ column: det.colConta.key, op: 'in', value: visao.contas.map((c) => c.nome) }];
+    /* O estágio precisa ir junto, sempre — e da família certa. Um KPI de
+       despesa filtrado pelo estágio da receita devolveria zero; e um KPI SEM
+       filtro de estágio soma previsão com realizado e devolve quase o dobro,
+       que é pior, porque parece um número plausível.
+       Visão de família conhecida leva o estágio dela. Visão montada pelo
+       usuário, que pode misturar receita e despesa, leva a LISTA dos estágios
+       escolhidos mais os que não pertencem a nenhuma família (saldo de
+       dívida, por exemplo) — exatamente a mesma regra que a tela aplicou. */
+    if (det.colEstagio && estagios) {
+      const fam = visao.grupo === 'despesa' ? 'despesa' : visao.grupo === 'receita' ? 'receita' : null;
+      if (fam && estagios[fam]) {
+        k.filters.push({ column: det.colEstagio.key, op: '=', value: estagios[fam] });
+      } else {
+        const permitidos = [estagios.receita, estagios.despesa].filter(Boolean)
+          .concat(((det.familias || {}).outro) || []);
+        if (permitidos.length) k.filters.push({ column: det.colEstagio.key, op: 'in', value: permitidos });
+      }
+    }
+    if (det.colTempo) { k.timeColumn = det.colTempo.key; k.grain = 'month'; }
+    return k;
+  }
+
+  AG.contabil = {
+    detectar, contas, visoes, casar, resultado, sobreRCL, comoKPI,
+    ancestrais, nivelDe, familiaEstagio, porFamilia, VISOES
+  };
+})();
+
+
 /* ==== 80-app.js ==== */
 /* ============================================================
    80 — APLICAÇÃO: ingestão, conversa, drill-down e reaprendizado
@@ -10454,26 +10795,58 @@ const RECEITAS_ARQUIVO = [
   }
   AG.discardTurn = discardTurn;
 
-  function modal(title, bodyNode, footNodes) {
+  /* Pilha de janelas. Abrir a segunda janela em cima da primeira empilhava
+     dois fundos escurecidos e dois desfoques, com a janela de baixo vazando
+     pelas bordas — parecia tela quebrada, não navegação. Agora a de baixo é
+     ESCONDIDA (não fechada) e volta ao lugar quando a de cima sai, com uma
+     seta de voltar no cabeçalho dizendo de onde se veio. */
+  const PILHA = [];
+  function modal(title, bodyNode, footNodes, opts) {
+    const o = opts || {};
     const overlay = el('div', { class: 'overlay' });
-    const box = el('div', { class: 'modal' });
-    const close = () => overlay.remove();
-    box.appendChild(el('div', { class: 'modal-head' }, [
-      el('h3', { text: title }),
-      el('div', { class: 'spacer' }),
-      el('button', { class: 'icon-btn', text: '✕', onclick: close, title: 'Fechar' })
-    ]));
+    const box = el('div', { class: 'modal' + (o.largura === 'estreita' ? ' modal-estreita' : '') });
+    const anterior = PILHA.length ? PILHA[PILHA.length - 1] : null;
+
+    const api = { overlay: overlay, close: null };
+    const close = () => {
+      overlay.remove();
+      const i = PILHA.indexOf(api);
+      if (i >= 0) PILHA.splice(i, 1);
+      const topo = PILHA.length ? PILHA[PILHA.length - 1] : null;
+      if (topo) topo.overlay.hidden = false;
+    };
+    api.close = close;
+
+    const cab = el('div', { class: 'modal-head' });
+    if (anterior) {
+      cab.appendChild(el('button', {
+        class: 'icon-btn voltar', text: '◂', title: 'Voltar para ' + (anterior.titulo || 'a janela anterior'),
+        onclick: close
+      }));
+    }
+    cab.appendChild(el('h3', { text: title }));
+    cab.appendChild(el('div', { class: 'spacer' }));
+    cab.appendChild(el('button', { class: 'icon-btn', text: '✕', onclick: close, title: 'Fechar' }));
+    box.appendChild(cab);
     box.appendChild(el('div', { class: 'modal-body' }, [bodyNode]));
     if (footNodes) box.appendChild(el('div', { class: 'modal-foot' }, footNodes));
     overlay.appendChild(box);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', function onEsc(e) {
-      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
-    });
+
+    if (anterior) anterior.overlay.hidden = true;
+    api.titulo = title;
+    PILHA.push(api);
     document.body.appendChild(overlay);
-    return { overlay, close };
+    return api;
   }
+  /* Esc fecha só a janela de cima — antes cada janela registrava o seu
+     próprio ouvinte e uma tecla fechava a pilha inteira. */
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !PILHA.length) return;
+    PILHA[PILHA.length - 1].close();
+  });
   AG.modal = modal;
+  AG.modalPilha = PILHA;
 
   /* =========================================================
      INGESTÃO
@@ -19219,6 +19592,344 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.exportar = { abrir, baixar, paraCSV, paraJSON, paraXLSX, tipoDe, colunasDe };
+})();
+
+
+/* ==== 94-render-contabil.js ==== */
+/* ============================================================
+   94 — TELA DAS VISÕES CONTÁBEIS
+   Duas partes: as visões que a base já sustenta, prontas, e o compositor
+   onde o usuário monta a sua a partir das contas que quiser.
+
+   A visão criada vira um KPI comum do agente — filtro `in` sobre a lista de
+   contas. Isso é de propósito: nada de máquina nova. Ela passa a valer nas
+   perguntas, no painel, no relatório executivo e no painel interativo
+   exportado, porque é o mesmo objeto que o resto do agente já sabe tratar.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const C = AG.contabil;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+  const moeda = (v) => AG.fmtCompact(v, 'currency');
+  const pct = (v, c) => (v === null || v === undefined ? '—' : AG.fmtPct(v, c === undefined ? 2 : c));
+
+  /* Estágio escolhido por base — fica na sessão, e a tela sempre o mostra. */
+  const ESTAGIO = {};
+  /* Um estágio por família. O padrão é sempre REALIZAÇÃO, nunca previsão:
+     comparar receita realizada com dotação inicial é comparar plano com
+     execução e chamar a diferença de resultado. */
+  function estagiosDe(ds, det) {
+    const guardado = ESTAGIO[ds.id] || {};
+    const fam = det.familias || { receita: [], despesa: [] };
+    const escolhe = (lista, prefs) => {
+      if (!lista || !lista.length) return null;
+      for (const re of prefs) { const a = lista.find((x) => re.test(x)); if (a) return a; }
+      return lista[0];
+    };
+    return {
+      receita: guardado.receita || escolhe(fam.receita, [/realizad/i, /arrecad/i]),
+      despesa: guardado.despesa || escolhe(fam.despesa, [/empenhad/i, /liquidad/i, /pago|paga/i])
+    };
+  }
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+
+  /* =========================================================
+     RENDERIZADOR
+     ========================================================= */
+  AG.renderers.contabil = function (body, ds, plan, question) {
+    const det = C.detectar(ds);
+    if (!det.ehContabil) {
+      throw new Error('esta base não tem o formato conta × valor. Procuro uma coluna que nomeie a conta ' +
+        '(conta, natureza, função, rubrica) e uma de valor. Nos arquivos do SICONFI, FINBRA, RREO e RGF ' +
+        'a "Receita Corrente Líquida" é uma LINHA, não uma coluna — é esse formato que esta tela lê.');
+    }
+    const estagios = estagiosDe(ds, det);
+    const v = C.visoes(ds, det, { plan: plan, estagios: estagios });
+    if (!v.visoes.length) {
+      throw new Error('reconheci ' + v.lista.length + ' contas, mas nenhuma casou com as visões conhecidas. ' +
+        'Use o compositor para montar a sua: qualquer conjunto de contas vira uma visão nomeada.');
+    }
+    const res = C.resultado(v.visoes);
+    const nRows = engine.applyFilters(ds, plan).length;
+
+    head(body, 'Visões contábeis de ' + ds.name,
+      v.lista.length + ' contas reconhecidas · ' + v.visoes.length + ' visões montadas' +
+      (estagios.receita ? ' · receita: <b>' + AG.esc(estagios.receita) + '</b>' : '') +
+      (estagios.despesa ? ' · despesa: <b>' + AG.esc(estagios.despesa) + '</b>' : '') +
+      (det.colEnte ? ' · agrupa ' + AG.esc(det.colEnte.label) : ''));
+
+    /* --- seletor de estágio: a decisão mais importante da tela --- */
+    const fams = det.familias || { receita: [], despesa: [] };
+    if ((fams.receita || []).length > 1 || (fams.despesa || []).length > 1) {
+      const linha = (rot, lista, fam) => {
+        if (!lista || lista.length < 2) return null;
+        const row = el('div', { class: 'pill-row', style: { marginBottom: '4px' } });
+        row.appendChild(el('span', { class: 'hint', style: { alignSelf: 'center', marginRight: '4px' }, text: rot }));
+        for (const e of lista) {
+          const b = el('button', { class: 'pill' + (e === estagios[fam] ? ' sel' : ''), text: e });
+          b.addEventListener('click', () => {
+            ESTAGIO[ds.id] = Object.assign({}, ESTAGIO[ds.id] || estagios, { [fam]: e });
+            AG.ask(question);
+          });
+          row.appendChild(b);
+        }
+        return row;
+      };
+      const a = linha('Receita:', fams.receita, 'receita');
+      const b2 = linha('Despesa:', fams.despesa, 'despesa');
+      if (a) body.appendChild(a);
+      if (b2) body.appendChild(b2);
+      body.appendChild(el('div', { class: 'hint', html:
+        'Receita e despesa têm estágios de <b>famílias diferentes</b>, e por isso a escolha é uma para cada — ' +
+        'um filtro único zeraria a despesa em silêncio. E os estágios não são intercambiáveis: ' +
+        '<b>empenhada</b> é compromisso assumido, <b>liquidada</b> é serviço reconhecido e <b>paga</b> é dinheiro ' +
+        'que saiu. A diferença entre empenhada e paga é o que vira restos a pagar — trocar um pelo outro muda o ' +
+        'resultado orçamentário sem mudar nenhum dado.' }));
+    }
+
+    /* --- os números de cabeceira --- */
+    const rcl = v.visoes.find((x) => x.id === 'rcl');
+    const pessoal = v.visoes.find((x) => x.id === 'pessoal');
+    const dcl = v.visoes.find((x) => x.id === 'dcl');
+    const kpis = [];
+    if (res) {
+      kpis.push(U().kpi('Receita', moeda(res.receita), res.rotReceita));
+      kpis.push(U().kpi('Despesa', moeda(res.despesa), res.rotDespesa));
+      kpis.push(U().kpi('Resultado', moeda(res.saldo),
+        res.saldo >= 0 ? 'superávit' : 'déficit'));
+    }
+    if (rcl) kpis.push(U().kpi('RCL', moeda(rcl.valor), 'receita corrente líquida'));
+    if (!kpis.length) {
+      for (const x of v.visoes.slice(0, 4)) kpis.push(U().kpi(x.rot.slice(0, 26), moeda(x.valor), x.via));
+    }
+    body.appendChild(el('div', { class: 'kpis' }, kpis.slice(0, 4)));
+
+    if (rcl && (pessoal || dcl)) {
+      const l2 = [];
+      if (pessoal) {
+        const p = C.sobreRCL(v.visoes, 'pessoal');
+        l2.push(U().kpi('Pessoal / RCL', pct(p), 'limite do ente: 60%'));
+      }
+      if (dcl) {
+        const d = C.sobreRCL(v.visoes, 'dcl');
+        l2.push(U().kpi('DCL / RCL', pct(d), 'limite de município: 120%'));
+      }
+      if (res && rcl.valor) l2.push(U().kpi('Despesa / RCL', pct(Math.abs(res.despesa) / rcl.valor), 'comprometimento total'));
+      body.appendChild(el('div', { class: 'kpis' }, l2));
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Os percentuais acima usam a RCL <b>desta base</b>. Se a fonte apurou RCL do exercício em vez dos ' +
+        'últimos 12 meses, todo percentual muda — e o demonstrativo nem sempre diz qual usou.')));
+    }
+
+    /* --- a tabela das visões, com o que entrou em cada uma --- */
+    const td = {
+      columns: [
+        { key: 'rot', label: 'Visão' },
+        { key: 'grupo', label: 'Grupo' },
+        { key: 'valor', label: 'Valor', format: 'currency' },
+        { key: 'sobreRcl', label: '% da RCL', format: 'percent' },
+        { key: 'n', label: 'Contas' },
+        { key: 'via', label: 'Casou por' }
+      ],
+      rows: v.visoes.map((x) => ({
+        rot: x.rot, grupo: x.grupo, valor: x.valor,
+        sobreRcl: rcl && rcl.valor ? Math.abs(x.valor) / rcl.valor : null,
+        n: x.nContas, via: x.via
+      }))
+    };
+    const cT = charts.card({
+      title: 'Visões montadas a partir desta base',
+      subtitle: 'cada uma diz quantas contas somou e por qual regra casou — clique para ver a composição',
+      tableData: td
+    });
+    cT.body.appendChild(charts.dataTable(td));
+    body.appendChild(cT.wrap);
+
+    /* --- composição de cada visão, aberta --- */
+    const det2 = el('div', { class: 'visoes-lista' });
+    for (const x of v.visoes) det2.appendChild(cartaoVisao(ds, det, x, estagios, rcl));
+    body.appendChild(det2);
+
+    /* --- receita × despesa --- */
+    const rec = v.visoes.filter((x) => x.grupo === 'receita' && x.id !== 'rcl');
+    const des = v.visoes.filter((x) => x.grupo === 'despesa');
+    if (rec.length >= 2 || des.length >= 2) {
+      const dados = rec.concat(des)
+        .map((x) => ({ label: x.rot, value: Math.abs(x.valor), grupo: x.grupo }))
+        .sort((a, b) => b.value - a.value).slice(0, 12);
+      const c = charts.card({
+        title: 'Receita e despesa lado a lado',
+        subtitle: 'valores absolutos; a despesa entra com sinal negativo nas contas, positivo no gráfico'
+      });
+      charts.renderInto(c.body, (w) => charts.barsH({
+        width: w, data: dados, format: 'currency',
+        height: Math.max(200, dados.length * 32),
+        colors: dados.map((x) => (x.grupo === 'receita' ? AG.PALETTE[0] : AG.PALETTE[1]))
+      }));
+      c.wrap.appendChild(charts.legend([
+        { label: 'receita', color: AG.PALETTE[0] }, { label: 'despesa', color: AG.PALETTE[1] }
+      ]));
+      body.appendChild(c.wrap);
+    }
+
+    /* --- ações --- */
+    body.appendChild(el('div', { class: 'btn-row', style: { marginTop: '12px' } }, [
+      el('button', {
+        class: 'btn sm primary', text: '＋ Montar a minha visão',
+        onclick: () => abrirCompositor(ds, det, v.lista, estagios)
+      }),
+      el('button', {
+        class: 'btn sm', text: 'Fixar as visões-chave como KPI',
+        onclick: () => {
+          const chaves = v.visoes.filter((x) => x.chave || /total/i.test(x.rot));
+          let n = 0;
+          for (const x of chaves) { AG.composer.saveKpi(C.comoKPI(ds, det, x, estagios)); n++; }
+          AG.composer.refresh();
+          AG.toast(n + ' visão(ões) viraram KPI. Aparecem no painel, no relatório e no painel exportado.');
+        }
+      })
+    ]));
+
+    for (const x of v.visoes) {
+      if (!x.nota) continue;
+      body.appendChild(U().insightNode(ins('info', 'ⓘ', '<b>' + AG.esc(x.rot) + ':</b> ' + x.nota)));
+    }
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Toda visão desta tela é uma <b>soma de contas nomeadas</b>, e a lista do que entrou está aberta acima. ' +
+      'Total contábil sem a lista do que o compõe é número que ninguém consegue defender numa reunião.')));
+
+    body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: ds.rows.length, rowsMatched: nRows, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  };
+
+  /* --- cartão de uma visão, com a composição e o botão de virar KPI --- */
+  function cartaoVisao(ds, det, x, estagios, rcl) {
+    const c = el('div', { class: 'fonte-item' });
+    const cab = el('div', { class: 'fonte-cab' });
+    cab.appendChild(el('div', { class: 'fonte-nome', text: x.rot }));
+    cab.appendChild(el('span', { class: 'selo', text: moeda(x.valor) }));
+    c.appendChild(cab);
+    c.appendChild(el('div', { class: 'fonte-meta',
+      text: x.nContas + ' conta(s) · casou por ' + x.via +
+        (rcl && rcl.valor ? ' · ' + pct(Math.abs(x.valor) / rcl.valor) + ' da RCL' : '') }));
+
+    const lista = x.contas.slice().sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+    const ul = el('ul', { class: 'contas-lista' });
+    for (const k of lista.slice(0, 8)) {
+      ul.appendChild(el('li', {}, [
+        el('span', { class: 'conta-nome', text: (k.codigo ? k.codigo + ' · ' : '') + k.nome }),
+        el('span', { class: 'conta-valor', text: moeda(k.valor) })
+      ]));
+    }
+    if (lista.length > 8) ul.appendChild(el('li', { class: 'hint', text: 'e mais ' + (lista.length - 8) + ' conta(s)' }));
+    c.appendChild(ul);
+
+    c.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [
+      el('button', {
+        class: 'btn sm', text: 'Virar KPI',
+        onclick: () => {
+          AG.composer.saveKpi(C.comoKPI(ds, det, x, estagios));
+          AG.composer.refresh();
+          AG.toast('“' + x.rot + '” virou KPI.');
+        }
+      }),
+      el('button', {
+        class: 'btn sm ghost', text: 'Perguntar sobre esta visão',
+        onclick: () => AG.ask('evolução mensal de ' + x.rot.toLowerCase())
+      })
+    ]));
+    return c;
+  }
+
+  /* =========================================================
+     COMPOSITOR — o usuário monta a visão dele
+     ========================================================= */
+  function abrirCompositor(ds, det, lista, estagios) {
+    const sel = new Set();
+    const body = el('div', { class: 'compositor' });
+
+    body.appendChild(el('div', { class: 'hint', html:
+      'Escolha as contas, dê um nome e a visão passa a existir no agente: vira KPI, entra no painel, ' +
+      'no relatório executivo e no painel exportado — e pode ser usada nas perguntas pelo nome que você deu.' }));
+
+    const nome = el('input', { class: 'inp', placeholder: 'Ex.: Receita própria do município' });
+    body.appendChild(el('label', { class: 'fld' }, [el('span', { text: 'Nome da visão' }), nome]));
+
+    const resumo = el('div', { class: 'compositor-resumo' });
+    const busca = el('input', { class: 'inp', placeholder: 'Filtrar contas por nome ou código…' });
+    body.appendChild(el('label', { class: 'fld' }, [el('span', { text: 'Contas' }), busca]));
+    body.appendChild(resumo);
+
+    const caixa = el('div', { class: 'contas-escolha' });
+    body.appendChild(caixa);
+
+    function total() {
+      let t = 0, n = 0;
+      for (const c of lista) if (sel.has(c.chave)) { t += c.valor; n++; }
+      return { t, n };
+    }
+    function atualizaResumo() {
+      const { t, n } = total();
+      resumo.innerHTML = '';
+      resumo.appendChild(el('span', { text: n + ' conta(s) selecionada(s)' }));
+      resumo.appendChild(el('b', { text: moeda(t) }));
+    }
+    function desenha() {
+      const q = AG.norm(busca.value);
+      caixa.innerHTML = '';
+      const vis = lista.filter((c) => !q || AG.norm(c.nome).indexOf(q) >= 0 || String(c.codigo || '').indexOf(busca.value) >= 0);
+      if (!vis.length) { caixa.appendChild(el('div', { class: 'hint', text: 'Nenhuma conta com esse termo.' })); return; }
+      for (const c of vis.slice(0, 300)) {
+        const lab = el('label', { class: 'conta-chk' + (sel.has(c.chave) ? ' sel' : '') });
+        const cx = el('input', { type: 'checkbox', checked: sel.has(c.chave) });
+        cx.addEventListener('change', () => {
+          if (cx.checked) sel.add(c.chave); else sel.delete(c.chave);
+          lab.classList.toggle('sel', cx.checked);
+          atualizaResumo();
+        });
+        lab.appendChild(cx);
+        lab.appendChild(el('span', { class: 'conta-nome', text: (c.codigo ? c.codigo + ' · ' : '') + c.nome }));
+        lab.appendChild(el('span', { class: 'conta-valor', text: moeda(c.valor) }));
+        caixa.appendChild(lab);
+      }
+      if (vis.length > 300) caixa.appendChild(el('div', { class: 'hint', text: 'mostrando 300 de ' + vis.length + ' — refine o filtro' }));
+    }
+    busca.addEventListener('input', desenha);
+    desenha(); atualizaResumo();
+
+    const salvar = el('button', {
+      class: 'btn primary', text: 'Criar visão',
+      onclick: () => {
+        const { t, n } = total();
+        if (!n) { AG.toast('Escolha pelo menos uma conta.'); return; }
+        const rot = nome.value.trim() || ('Visão de ' + n + ' contas');
+        const contas = lista.filter((c) => sel.has(c.chave));
+        const visao = { id: AG.slug(rot), rot: rot, grupo: 'usuario', sinal: 1, valor: t, contas: contas, nContas: n, via: 'escolha sua' };
+        const k = C.comoKPI(ds, det, visao, estagios);
+        AG.composer.saveKpi(k);
+        AG.composer.refresh();
+        /* também entra no dicionário: a visão passa a ser reconhecida pelo
+           nome nas perguntas, que é o que a torna útil de verdade */
+        if (AG.kb && AG.kb.addTerm) {
+          AG.kb.addTerm(rot, { kind: 'kpi', dsId: ds.id, column: k.id, weight: 1.6, source: 'user' });
+        }
+        d.close();
+        AG.toast('“' + rot + '” criada: ' + n + ' contas, ' + moeda(t) + '. Já vale como KPI e nas perguntas.');
+      }
+    });
+    const d = AG.modal('Montar visão contábil', body, [
+      el('button', { class: 'btn', text: 'Cancelar', onclick: () => d.close() }), salvar
+    ]);
+    return d;
+  }
+
+  AG.contabilUI = { abrirCompositor, estagiosDe };
 })();
 
 </script>
