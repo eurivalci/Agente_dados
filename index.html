@@ -619,7 +619,7 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
           <button class="btn sm ghost" id="btn-demo">Dados de demonstração</button>
         </div>
         <div class="hint" style="margin-top:6px">
-          70 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
+          82 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
         </div>
       </div>
 
@@ -2480,6 +2480,206 @@ AG.colorFor = function (key, index) {
 })();
 
 
+/* ==== 28-resposta-api.js ==== */
+/* ============================================================
+   28 — A FORMA DA RESPOSTA DE UMA API
+
+   Uma API pública devolve dado em quatro formas, e só uma delas era
+   reconhecida até aqui:
+
+     1. lista na raiz            [{...},{...}]              ← só esta funcionava
+     2. envelope com a lista     {items:[...], hasMore}
+     3. envelope aninhado        {success, result:{records:[...]}}
+     4. REGISTRO ÚNICO           {cnpj:"...", razao_social:"..."}
+
+   A quarta é a forma de toda consulta por identificador — CNPJ, CEP,
+   código do ente. Recusá-la deixou ViaCEP, Minha Receita e CNPJ.ws no
+   catálogo como fontes que respondem e que nunca viravam base.
+
+   A armadilha desta correção é a regra ingênua "pegue o único array que
+   houver": a resposta do Minha Receita é uma EMPRESA que contém um array
+   de sócios. Essa regra traria os sócios e descartaria a empresa — um erro
+   silencioso, com aparência de acerto. Por isso a distinção aqui não é
+   "tem array?", e sim: **os campos deste objeto são metadados de transporte
+   ou são dados?** Objeto com dados próprios é um registro, não um envelope.
+   ============================================================ */
+
+(function () {
+  /* Chaves que, por convenção de mercado, carregam a lista dentro do envelope.
+     ORDS (items), Spring (content), CKAN (records), JSON:API (data),
+     OData (value), GeoJSON (features), e as variantes em português. */
+  const CHAVES_LISTA = [
+    'items', 'data', 'value', 'features', 'registros', 'results', 'records',
+    'content', 'rows', 'result', 'docs', 'entries', 'elements', 'objects',
+    'conteudo', 'resultado', 'dados', 'lista', 'list', 'itens', 'linhas'
+  ];
+
+  /* Campos de transporte: dizem como a resposta veio, não o que ela diz.
+     Um objeto feito só destes campos é envelope; um objeto com qualquer
+     campo fora desta lista é um registro. */
+  const META = new RegExp('^(' + [
+    'success', 'sucesso', 'status', 'statuscode', 'ok', 'code', 'codigo',
+    'count', 'total', 'totais', 'totalregistros', 'totalpaginas', 'totalelements',
+    'totalpages', 'totalcount', 'numberofelements', 'page', 'pagina', 'paginas',
+    'offset', 'limit', 'limite', 'size', 'tamanho', 'hasmore', 'hasnext',
+    'next', 'previous', 'prev', 'first', 'last', 'link', 'links', 'href', 'self',
+    'meta', 'metadata', 'metadados', 'empty', 'sort', 'sorted', 'pageable',
+    'number', 'took', 'timed_out', 'timedout', 'version', 'versao', 'apiversion',
+    'generated', 'timestamp', 'help', 'type', 'kind', 'schema'
+  ].join('|') + ')$');
+
+  /* Campos que carregam a recusa da própria API. Existem porque vários
+     serviços brasileiros respondem HTTP 200 com o erro no corpo: o ViaCEP
+     devolve {"erro":"true"} para CEP inexistente, e quem confia só no status
+     ingere uma base de uma linha chamada "erro". */
+  const ERRO = new RegExp('^(erro|erros|error|errors|message|mensagem|detail|detalhe|detalhes|fault|exception|titulo|title)$');
+
+  const ehObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const norm = (k) => String(k).toLowerCase().replace(/[\s_-]/g, '');
+
+  /** Um array só é "de registros" se traz objetos. Array de strings ou de
+      números é um campo multivalorado, não uma tabela. */
+  function listaDeRegistros(a) {
+    if (!Array.isArray(a) || !a.length) return false;
+    let objs = 0;
+    for (let i = 0; i < Math.min(a.length, 20); i++) if (ehObj(a[i])) objs++;
+    return objs >= Math.min(a.length, 20) / 2;
+  }
+
+  /** Arrays de objetos guardados DENTRO de um registro único: o quadro de
+      sócios de uma empresa, os estabelecimentos de um CNPJ raiz. Cada um é
+      uma tabela em potencial, e quem decide é o usuário — não esta função. */
+  function listasInternas(o) {
+    const out = [];
+    for (const k in o) {
+      if (listaDeRegistros(o[k])) out.push({ chave: k, n: o[k].length, linhas: o[k] });
+      else if (ehObj(o[k])) {
+        for (const k2 in o[k]) {
+          if (listaDeRegistros(o[k][k2])) out.push({ chave: k + '.' + k2, n: o[k][k2].length, linhas: o[k][k2] });
+        }
+      }
+    }
+    return out.sort((a, b) => b.n - a.n);
+  }
+
+  /** O objeto é só recusa da API? Todos os campos são de erro ou de transporte,
+      e pelo menos um de erro tem valor. */
+  function recusaDaAPI(o) {
+    const ks = Object.keys(o);
+    if (!ks.length || ks.length > 4) return null;
+    let msg = null;
+    for (const k of ks) {
+      const n = norm(k);
+      if (ERRO.test(n)) {
+        const v = o[k];
+        if (v === false || v === null || v === undefined || v === '' || v === 'false') continue;
+        /* "erro":"true" é marcador, não mensagem — devolver a palavra "true"
+           como explicação para o usuário seria pior que não explicar nada. */
+        const marcador = v === true || /^(true|1|sim|s)$/i.test(String(v));
+        msg = marcador ? '' : (typeof v === 'string' ? v : JSON.stringify(v));
+        continue;
+      }
+      if (!META.test(n)) return null;          // tem campo de dado: não é só erro
+    }
+    return msg === null ? null : (msg || 'a fonte respondeu que não encontrou o que foi pedido');
+  }
+
+  /** Objeto cujos campos são todos de transporte — envelope, nunca registro. */
+  function soMetadados(o) {
+    for (const k in o) {
+      if (Array.isArray(o[k]) || ehObj(o[k])) continue;
+      if (!META.test(norm(k))) return false;
+    }
+    return true;
+  }
+
+  /**
+   * A forma da resposta, com o caminho percorrido à vista.
+   * Devolve sempre um objeto; `linhas` é null só quando não há o que ingerir.
+   *
+   *   forma: 'lista' | 'envelope' | 'registro' | 'recusa' | 'vazia' | 'desconhecida'
+   *   caminho: de onde a lista saiu ('items', 'result.records'), para a tela
+   *   listas: arrays de objetos dentro de um registro único
+   */
+  function analisar(j, profundidade) {
+    const d = profundidade || 0;
+    if (j === null || j === undefined) return { linhas: null, forma: 'desconhecida', caminho: null, listas: [] };
+
+    if (Array.isArray(j)) {
+      return {
+        linhas: j, forma: j.length ? 'lista' : 'vazia', caminho: null, listas: [],
+        aviso: j.length && !listaDeRegistros(j)
+          ? 'A lista veio com valores soltos, não com registros. Cada item virou uma linha de uma coluna só.'
+          : null
+      };
+    }
+    if (typeof j !== 'object') return { linhas: null, forma: 'desconhecida', caminho: null, listas: [] };
+
+    /* 1. envelope com chave conhecida */
+    for (const k in j) {
+      if (CHAVES_LISTA.indexOf(norm(k)) < 0) continue;
+      if (Array.isArray(j[k])) {
+        return { linhas: j[k], forma: j[k].length ? 'envelope' : 'vazia', caminho: k, listas: [] };
+      }
+    }
+    /* 2. envelope aninhado: {success, result:{records:[…]}} do CKAN */
+    if (d < 2) {
+      for (const k in j) {
+        if (CHAVES_LISTA.indexOf(norm(k)) < 0 || !ehObj(j[k])) continue;
+        const dentro = analisar(j[k], d + 1);
+        if (dentro.linhas) {
+          return {
+            linhas: dentro.linhas, forma: dentro.forma === 'registro' ? 'registro' : 'envelope',
+            caminho: k + (dentro.caminho ? '.' + dentro.caminho : ''), listas: dentro.listas
+          };
+        }
+      }
+    }
+    /* 3. envelope de chave desconhecida: só vale se o objeto não tiver dado
+          próprio nenhum e houver exatamente uma lista candidata. Duas listas
+          num envelope sem dados é ambiguidade — e ambiguidade não se resolve
+          por sorteio: cai no passo 4 e o usuário escolhe. */
+    if (soMetadados(j)) {
+      const cands = [];
+      for (const k in j) if (listaDeRegistros(j[k])) cands.push(k);
+      if (cands.length === 1) {
+        return { linhas: j[cands[0]], forma: 'envelope', caminho: cands[0], listas: [] };
+      }
+    }
+    /* 4. recusa da própria API com HTTP 200 */
+    const rec = recusaDaAPI(j);
+    if (rec !== null) return { linhas: null, forma: 'recusa', caminho: null, listas: [], erro: rec };
+
+    /* 5. registro único: a forma de toda consulta por identificador */
+    if (!Object.keys(j).length) return { linhas: null, forma: 'vazia', caminho: null, listas: [] };
+    return { linhas: [j], forma: 'registro', caminho: null, listas: listasInternas(j) };
+  }
+
+  /** Achata objetos aninhados: a.b.c vira uma coluna só, que é o que o motor lê.
+      Array vira JSON numa célula — preservado, legível, e não somável por engano. */
+  function achatar(o, pre, alvo) {
+    alvo = alvo || {}; pre = pre || '';
+    if (o === null || typeof o !== 'object') { alvo[pre || 'valor'] = o; return alvo; }
+    if (Array.isArray(o)) { alvo[pre || 'valor'] = JSON.stringify(o); return alvo; }
+    for (const k in o) {
+      const v = o[k];
+      const ch = pre ? pre + '.' + k : k;
+      if (v && typeof v === 'object' && !Array.isArray(v)) achatar(v, ch, alvo);
+      else alvo[ch] = Array.isArray(v) ? JSON.stringify(v) : v;
+    }
+    return alvo;
+  }
+
+  /** Compatível com a assinatura antiga: array de registros, ou null. */
+  function extrairLinhas(j) {
+    const r = analisar(j);
+    return r.linhas && r.linhas.length ? r.linhas : (r.forma === 'vazia' ? [] : null);
+  }
+
+  AG.respostaAPI = { analisar, achatar, extrairLinhas, listasInternas, CHAVES_LISTA };
+})();
+
+
 /* ==== 30-profiler.js ==== */
 /* ============================================================
    30 — PERFIL DE DADOS: inferência de tipo, papel e qualidade
@@ -3644,7 +3844,153 @@ const FONTES = [
   cobertura:"Brasil — tribunais estaduais e federais",
   auditoria:"Não auditada no navegador. Publicação em painel; o dado por ente devedor depende do tribunal.",
   doc:"https://www.cnj.jus.br/",
-  chave:["cnj","precatorio","justica em numeros","tribunal","ente devedor","estoque"] }
+  chave:["cnj","precatorio","justica em numeros","tribunal","ente devedor","estoque"] },
+
+/* --- fundos, capitais e mercado (CVM, ANBIMA, B3) -------------------
+   Estavam só como receita de download na aba Financeiro, e por isso não
+   apareciam quando alguém buscava "CVM", "fundo" ou "cota" no catálogo.
+   Entram aqui com ficha técnica completa. Nenhuma foi auditada no navegador
+   daqui: o portal de download e o painel de consulta entram como tais,
+   porque isso é verificável pela natureza da fonte; a API que existe entra
+   como `naoaud` e é auditada pelo primeiro clique em "Testar agora". -- */
+{ id:"cvm-fi-diario", nome:"CVM — Informe diário de fundos (cota e patrimônio)", org:"CVM", dom:"setorial",
+  acesso:"file", gran:"empresa", core:true, peso:94,
+  desc:"A base canônica para comparar fundos de investimento no Brasil: uma linha por fundo por dia útil, com CNPJ, valor da cota, patrimônio líquido, captação, resgate e número de cotistas. A cota já vem líquida de taxa de administração — o que se compara é o que o cotista recebeu. Traga para o agente e pergunte \"comparar os fundos contra o CDI\".",
+  base:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
+  formato:"CSV por competência mensal, um arquivo por mês",
+  periodicidade:"Diária, publicada com defasagem de poucos dias",
+  cobertura:"Brasil — todos os fundos registrados na CVM, séries desde 2000",
+  auditoria:"Não auditada no navegador. Portal de dados abertos com arquivo por competência; o arquivo mensal tem milhões de linhas e cobre o mercado inteiro, então filtre os CNPJs que interessam ANTES de trazer.",
+  doc:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
+  chave:["cvm","fundo","fundos","cota","valor da cota","patrimonio liquido","cotistas","informe diario","captacao","resgate","comparar fundos","investimento"] },
+
+{ id:"cvm-fi-cad", nome:"CVM — Cadastro de fundos (nome, classe, gestor, taxa)", org:"CVM", dom:"setorial",
+  acesso:"file", gran:"empresa", core:true, peso:90,
+  desc:"O de-para do CNPJ: denominação social, classe, situação cadastral, data de início, administrador, gestor, auditor, público-alvo, taxa de administração e taxa de performance. É o que transforma um ranking de catorze dígitos num ranking legível — e o que permite perguntar se a taxa de administração explica o retorno entregue.",
+  base:"https://dados.cvm.gov.br/dataset/fi-cad",
+  formato:"CSV único, atualizado diariamente",
+  periodicidade:"Diária",
+  cobertura:"Brasil — todos os fundos, inclusive cancelados e em liquidação",
+  auditoria:"Não auditada no navegador. A situação cadastral é o campo que permite enxergar o viés de sobrevivência de frente: fundo cancelado some das comparações de mercado sem aviso, e aqui ele continua listado.",
+  doc:"https://dados.cvm.gov.br/dataset/fi-cad",
+  equivale:"cvm-fi-diario",
+  chave:["cvm","cadastro","fundo","gestor","administrador","taxa de administracao","taxa de performance","classe","cnpj do fundo","situacao cadastral"] },
+
+{ id:"cvm-fi-perfil", nome:"CVM — Perfil mensal dos fundos", org:"CVM", dom:"setorial",
+  acesso:"file", gran:"empresa", peso:74,
+  desc:"O que o fundo tem por dentro, mês a mês: composição por tipo de ativo, posições em derivativos, exposição a crédito privado, concentração por emissor e uso de alavancagem. É a fonte para perguntar se dois fundos com retorno parecido correm o mesmo risco.",
+  base:"https://dados.cvm.gov.br/dataset/fi-doc-perfil_mensal",
+  formato:"CSV por competência mensal",
+  periodicidade:"Mensal",
+  cobertura:"Brasil — fundos obrigados ao informe de perfil",
+  auditoria:"Não auditada no navegador. Portal de dados abertos, arquivo por competência.",
+  doc:"https://dados.cvm.gov.br/dataset/fi-doc-perfil_mensal",
+  equivale:"cvm-fi-diario",
+  chave:["cvm","perfil","carteira do fundo","derivativo","credito privado","alavancagem","concentracao","emissor","risco do fundo"] },
+
+{ id:"cvm-dfp", nome:"CVM — DFP e ITR de companhias abertas", org:"CVM", dom:"setorial",
+  acesso:"file", gran:"empresa", peso:82,
+  desc:"Demonstrações financeiras padronizadas (anual) e informações trimestrais de todas as companhias abertas: balanço patrimonial ativo e passivo, demonstração de resultado, DRE consolidada e individual. Com as contas em colunas, o agente responde margem, liquidez, endividamento, alavancagem e ROE.",
+  base:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
+  formato:"ZIP por exercício, com CSV separado para BPA, BPP e DRE",
+  periodicidade:"Anual (DFP) e trimestral (ITR)",
+  cobertura:"Brasil — todas as companhias abertas, séries desde 2010",
+  auditoria:"Não auditada no navegador. Atenção à unidade: a CVM publica em MILHARES de reais — comparar com base em reais sem converter erra por mil.",
+  doc:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
+  chave:["cvm","dfp","itr","demonstracao financeira","balanco","dre","companhia aberta","margem","liquidez","endividamento","roe","fundamentalista"] },
+
+{ id:"cvm-cia-cad", nome:"CVM — Cadastro de companhias abertas", org:"CVM", dom:"setorial",
+  acesso:"file", gran:"empresa", peso:66,
+  desc:"CNPJ, denominação social e comercial, setor de atividade, situação do registro, data de registro, código CVM e município da sede. É o de-para que liga a DFP ao papel negociado na bolsa.",
+  base:"https://dados.cvm.gov.br/dataset/cia_aberta-cad",
+  formato:"CSV único",
+  periodicidade:"Diária",
+  cobertura:"Brasil — companhias com registro ativo e cancelado",
+  auditoria:"Não auditada no navegador. Portal de dados abertos da CVM.",
+  doc:"https://dados.cvm.gov.br/dataset/cia_aberta-cad",
+  equivale:"cvm-dfp",
+  chave:["cvm","companhia aberta","cadastro","setor","codigo cvm","registro","emissor"] },
+
+{ id:"cvm-ckan", nome:"CVM — API do portal de dados abertos (CKAN)", org:"CVM", dom:"setorial",
+  acesso:"naoaud", gran:"catalogo", peso:62,
+  desc:"O portal da CVM roda CKAN, que expõe API padrão para listar conjuntos, descrever recursos e localizar o arquivo de cada competência sem navegar pela página. Serve para descobrir o caminho certo antes de baixar.",
+  base:"https://dados.cvm.gov.br/api/3/action/package_list",
+  formato:"JSON (padrão CKAN: success/result)",
+  periodicidade:"Contínua",
+  cobertura:"Todo o acervo de dados abertos da CVM",
+  auditoria:"ENTROU SEM AUDITORIA em 17/09/2026. A API CKAN é padrão do software e o portal a expõe publicamente, mas não foi testada no navegador daqui — clique em Testar agora e o resultado fica gravado como auditoria sua, com a data. Se responder, `package_show?id=fi-cad` devolve a lista de arquivos daquele conjunto.",
+  doc:"https://dados.cvm.gov.br/",
+  chave:["cvm","ckan","api","catalogo","dados abertos","package","recurso"] },
+
+{ id:"anbima-indices", nome:"ANBIMA — Índices de referência (IMA, IRF-M, IHFA, IDkA)", org:"ANBIMA", dom:"setorial",
+  acesso:"file", gran:"variavel", core:true, peso:80,
+  desc:"Os benchmarks que fazem sentido para renda fixa brasileira: IMA-B (títulos indexados ao IPCA), IRF-M (prefixados), IMA-Geral, IDkA (duração constante) e IHFA (multimercados). Comparar um fundo de renda fixa longa contra o CDI é comparar contra o benchmark errado — a diferença aparece como habilidade e é só duração.",
+  base:"https://www.anbima.com.br/pt_br/informar/",
+  formato:"Série histórica em planilha e arquivo de texto",
+  periodicidade:"Diária",
+  cobertura:"Brasil — séries desde 2000 para as principais famílias",
+  auditoria:"Não auditada no navegador. Área de informações de mercado com download por índice e período. Carregue a série junto com as cotas e pergunte \"comparar os fundos contra o IMA-B\" — o agente usa o índice nomeado como referência, não como filtro.",
+  doc:"https://www.anbima.com.br/pt_br/informar/",
+  chave:["anbima","indice","ima","ima-b","irf-m","ihfa","idka","benchmark","renda fixa","duracao","referencia"] },
+
+{ id:"anbima-data", nome:"ANBIMA Data — portal de informações de mercado", org:"ANBIMA", dom:"setorial",
+  acesso:"painel", gran:"catalogo", peso:64,
+  desc:"Portal com estatísticas da indústria de fundos (patrimônio, captação líquida e número de fundos por classe), curvas de juros, debêntures e precificação de ativos. Boa referência de mercado, mas é tela de consulta: o dado bruto sai por download pontual.",
+  base:"https://data.anbima.com.br/",
+  formato:"Painéis e planilhas por tema",
+  periodicidade:"Diária e mensal, conforme o tema",
+  cobertura:"Brasil — indústria de fundos e mercado de capitais",
+  auditoria:"Não auditada no navegador. Portal de consulta; parte do conteúdo exige cadastro.",
+  doc:"https://data.anbima.com.br/",
+  equivale:"anbima-indices",
+  chave:["anbima","fundos","patrimonio","captacao liquida","classificacao anbima","debenture","curva de juros","mercado de capitais"] },
+
+{ id:"anbima-api", nome:"ANBIMA — API de dados (exige credencial)", org:"ANBIMA", dom:"setorial",
+  acesso:"key", gran:"variavel", peso:58,
+  desc:"API oficial com índices, curvas, precificação de títulos públicos e privados e dados da indústria de fundos. Exige credencial de associado ou cadastrado, com client id e secret.",
+  base:"https://developers.anbima.com.br/",
+  formato:"JSON (OAuth com client credentials)",
+  periodicidade:"Diária",
+  cobertura:"Brasil — conforme o produto contratado",
+  auditoria:"Não auditada no navegador. Exige credencial própria — e, como qualquer chave, ela não deve viver em código de navegador: o agente não guarda credencial. Para uso aqui, o caminho é o arquivo.",
+  doc:"https://developers.anbima.com.br/",
+  equivale:"anbima-indices",
+  chave:["anbima","api","credencial","oauth","precificacao","curva","titulo publico"] },
+
+{ id:"b3-cotahist", nome:"B3 — Séries históricas do mercado à vista (COTAHIST)", org:"B3", dom:"setorial",
+  acesso:"file", gran:"empresa", core:true, peso:86,
+  desc:"Histórico anual de todos os papéis negociados: abertura, mínimo, máximo, médio, fechamento, melhor oferta de compra e venda, volume e quantidade. É a base para retorno, volatilidade, drawdown e beta de qualquer ação ou FII listado.",
+  base:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
+  formato:"Arquivo de LARGURA FIXA compactado, não CSV — exige um passo de conversão",
+  periodicidade:"Diária, com arquivo consolidado por ano",
+  cobertura:"Brasil — todos os papéis do mercado à vista, séries desde 1986",
+  auditoria:"Não auditada no navegador. O layout é posicional e vem documentado na própria página: converta para CSV mantendo data, código do papel e preço de fechamento antes de trazer. Para poucos ativos, exportar da própria corretora costuma ser mais rápido e já vem em CSV.",
+  doc:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
+  chave:["b3","bolsa","cotahist","cotacao","acao","acoes","papel","fechamento","serie historica","mercado a vista","fii","ticker"] },
+
+{ id:"b3-indices", nome:"B3 — Índices e carteiras teóricas (Ibovespa, IFIX, SMLL)", org:"B3", dom:"setorial",
+  acesso:"painel", gran:"variavel", peso:72,
+  desc:"Composição e peso de cada papel nas carteiras teóricas dos índices, com a metodologia e as prévias de rebalanceamento. Serve de benchmark para beta e para checar se a concentração de um índice explica o desempenho de um fundo que o segue.",
+  base:"https://www.b3.com.br/pt_br/market-data-e-indices/indices/",
+  formato:"Consulta em tela, com exportação da carteira em CSV",
+  periodicidade:"Carteira quadrimestral, com prévias; índice em tempo real",
+  cobertura:"Brasil — Ibovespa, IBrX, SMLL, IDIV, IFIX e demais",
+  auditoria:"Não auditada no navegador. Página de índices com exportação da carteira por índice e data-base.",
+  doc:"https://www.b3.com.br/pt_br/market-data-e-indices/indices/",
+  equivale:"b3-cotahist",
+  chave:["b3","ibovespa","ifix","smll","ibrx","idiv","indice","carteira teorica","peso","benchmark","rebalanceamento"] },
+
+{ id:"b3-fundos-listados", nome:"B3 — Fundos listados (FIIs, ETFs, Fiagro, FIP)", org:"B3", dom:"setorial",
+  acesso:"painel", gran:"empresa", peso:68,
+  desc:"Relação dos fundos negociados em bolsa com código de negociação, administrador, segmento, número de cotistas e patrimônio. É a ponte entre o CNPJ da CVM e o ticker que aparece na corretora.",
+  base:"https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/",
+  formato:"Consulta em tela, com exportação por segmento",
+  periodicidade:"Contínua",
+  cobertura:"Brasil — fundos listados em bolsa",
+  auditoria:"Não auditada no navegador. Página de produtos com listagem por tipo de fundo.",
+  doc:"https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/",
+  equivale:"cvm-fi-cad",
+  chave:["b3","fii","etf","fiagro","fip","fundo listado","ticker","codigo de negociacao","administrador","segmento"] }
 ];
 
 const RECEITAS = [
@@ -3751,7 +4097,7 @@ const GRANS = {
    instrução que continua valendo.
    ============================================================ */
 const RECEITAS_ARQUIVO = [
-  { id:"fa-ipca", titulo:"IPCA mensal para deflacionar suas séries",
+  { id:"fa-ipca", src:"bcb-sgs", titulo:"IPCA mensal para deflacionar suas séries",
     org:"Banco Central — SGS", dom:"fiscal", usa:"finreal",
     portal:"https://www3.bcb.gov.br/sgspub/",
     desc:"A série 433 é a variação mensal do IPCA em %. O agente encadeia essa variação em número índice sozinho — basta a coluna estar na mesma base, com as mesmas datas.",
@@ -3762,7 +4108,7 @@ const RECEITAS_ARQUIVO = [
       "Junte a coluna à sua base de receita ou despesa e pergunte: \"receita em valores reais\"."],
     alternativa:"Também servem a 189 (IGP-M) e a 188 (INPC). Para o Sharpe, use a 4389 (CDI ao ano) e informe o valor na própria pergunta: \"sharpe com cdi de 11%\"." },
 
-  { id:"fa-b3", titulo:"Cotações históricas da B3",
+  { id:"fa-b3", src:"b3-cotahist", titulo:"Cotações históricas da B3",
     org:"B3", dom:"setorial", usa:"finrisco",
     portal:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
     desc:"Série histórica anual de todos os papéis. É arquivo de largura fixa, não CSV: precisa de um passo de conversão antes de entrar aqui.",
@@ -3773,7 +4119,7 @@ const RECEITAS_ARQUIVO = [
       "Para beta, deixe o índice como segunda coluna na mesma base, com as mesmas datas."],
     alternativa:"Se você acompanha poucos ativos, exportar o histórico da própria corretora costuma ser mais rápido e já vem em CSV." },
 
-  { id:"fa-cvm-dfp", titulo:"Demonstrações financeiras de companhias abertas",
+  { id:"fa-cvm-dfp", src:"cvm-dfp", titulo:"Demonstrações financeiras de companhias abertas",
     org:"CVM — Dados Abertos", dom:"setorial", usa:"finindic",
     portal:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
     desc:"DFP (anual) e ITR (trimestral) de todas as companhias abertas: balanço patrimonial e demonstração de resultado, em CSV dentro de um ZIP por ano.",
@@ -3784,7 +4130,7 @@ const RECEITAS_ARQUIVO = [
       "Com as contas em colunas, pergunte \"indicadores contábeis margem e liquidez\"."],
     alternativa:"A CVM publica no mesmo padrão os informes diários de fundos (dataset fi-doc-inf_diario), que servem para retorno e risco de cota." },
 
-  { id:"fa-tesouro-direto", titulo:"Preços e taxas do Tesouro Direto",
+  { id:"fa-tesouro-direto", src:"tesouro-ckan", titulo:"Preços e taxas do Tesouro Direto",
     org:"Tesouro Transparente", dom:"fiscal", usa:"finrisco",
     portal:"https://www.tesourotransparente.gov.br/publicacoes/preco-e-taxa-dos-titulos-publicos/",
     desc:"Série diária de preço e taxa de cada título público, desde 2002. Referência de renda fixa para comparar com qualquer carteira.",
@@ -3794,7 +4140,7 @@ const RECEITAS_ARQUIVO = [
       "Traga para o agente e pergunte \"retorno e risco do preço\"."],
     alternativa:"A API CKAN do mesmo portal existe, mas nega CORS: pelo navegador, é download." },
 
-  { id:"fa-rreo", titulo:"RREO e RGF do seu município",
+  { id:"fa-rreo", src:"siconfi-rreo", titulo:"RREO e RGF do seu município",
     org:"Tesouro Nacional — SICONFI", dom:"fiscal", usa:"finlrf",
     portal:"https://siconfi.tesouro.gov.br/siconfi/pages/public/consulta_finbra/finbra_list.jsf",
     desc:"Receita Corrente Líquida, despesa com pessoal e dívida consolidada — as três contas de que o agente precisa para calcular os limites da LRF.",
@@ -3810,7 +4156,7 @@ const RECEITAS_ARQUIVO = [
      catálogo só aceita entrada com auditoria de CORS feita e datada, e
      nenhuma destas foi auditada no navegador. Dizer "API direta" sem ter
      testado seria inventar uma promessa — aqui o caminho é o download. */
-  { id:"fa-cvm-fi-diario", titulo:"Informe diário de fundos (cota e patrimônio)",
+  { id:"fa-cvm-fi-diario", src:"cvm-fi-diario", titulo:"Informe diário de fundos (cota e patrimônio)",
     org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
     portal:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
     desc:"A base canônica para comparar fundos: uma linha por fundo por dia útil, com CNPJ, valor da cota, patrimônio líquido, captação, resgate e número de cotistas. A cota já vem líquida de taxa de administração — o que você compara é o que o cotista recebeu.",
@@ -3821,7 +4167,7 @@ const RECEITAS_ARQUIVO = [
       "Traga e pergunte \"comparar os fundos contra o CDI\" — o agente detecta o formato sozinho."],
     alternativa:"Para saber o nome, a classe, o gestor e a taxa de cada CNPJ, baixe também o cadastro (dataset fi-cad) e cruze pelo CNPJ na aba Cruzar bases." },
 
-  { id:"fa-cvm-fi-cad", titulo:"Cadastro de fundos (nome, classe, gestor, taxa)",
+  { id:"fa-cvm-fi-cad", src:"cvm-fi-cad", titulo:"Cadastro de fundos (nome, classe, gestor, taxa)",
     org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
     portal:"https://dados.cvm.gov.br/dataset/fi-cad",
     desc:"O de-para do CNPJ: denominação social, classe, situação, data de início, administrador, gestor, taxa de administração e de performance. É o que transforma um ranking de 14 dígitos num ranking legível.",
@@ -3832,7 +4178,7 @@ const RECEITAS_ARQUIVO = [
       "Com a taxa de administração junto, dá para perguntar o que ela explica do retorno entregue."],
     alternativa:"A situação cadastral (em funcionamento, cancelado, liquidação) é o que permite ver o viés de sobrevivência de frente: fundo cancelado some das comparações de mercado sem aviso." },
 
-  { id:"fa-cadprev-dair", titulo:"Carteira de um RPPS (DAIR)",
+  { id:"fa-cadprev-dair", src:"cadprev", titulo:"Carteira de um RPPS (DAIR)",
     org:"Ministério da Previdência — CADPREV", dom:"fiscal", usa:"fincarteira",
     portal:"https://cadprev.previdencia.gov.br/",
     desc:"O Demonstrativo de Aplicações e Investimentos dos Recursos: fundo a fundo, com CNPJ, segmento, valor aplicado e rentabilidade declarada. É a carteira como ela é reportada ao órgão.",
@@ -3843,7 +4189,7 @@ const RECEITAS_ARQUIVO = [
       "Para comparar o DESEMPENHO desses fundos, baixe o informe diário da CVM com os mesmos CNPJs."],
     alternativa:"A API do CADPREV está no catálogo, mas foi auditada em 05/09/2026 com CORS negado: pelo navegador, é download." },
 
-  { id:"fa-anbima", titulo:"Índices de referência da ANBIMA (IMA, IHFA, IDkA)",
+  { id:"fa-anbima", src:"anbima-indices", titulo:"Índices de referência da ANBIMA (IMA, IHFA, IDkA)",
     org:"ANBIMA", dom:"setorial", usa:"fincompara",
     portal:"https://www.anbima.com.br/pt_br/informar/",
     desc:"Os benchmarks que fazem sentido para renda fixa brasileira: IMA-B (títulos indexados ao IPCA), IRF-M (prefixados), IMA-Geral e IHFA (multimercados). Comparar um fundo de renda fixa longa contra o CDI é comparar contra o benchmark errado — a diferença aparece como habilidade e é só duração.",
@@ -4615,7 +4961,7 @@ const RECEITAS_ARQUIVO = [
     { intent: 'finreal', re: /(deflacion|valores? reais|em termos reais|descontada a inflacao|corrigid[oa] pel[oa] (ipca|igp|inpc|inflacao)|a precos de|poder de compra|real vs nominal|nominal vs real|inflacao acumulada|serie real)/ },
     { intent: 'finbeta', re: /(\bbeta\b|correlacao com o (indice|ibovespa|benchmark|mercado)|acompanha o (indice|ibovespa|mercado)|em relacao ao (indice|benchmark|ibovespa)|contra o (indice|benchmark|ibovespa|cdi)|versus o (indice|benchmark|ibovespa))/ },
     { intent: 'finindic', re: /(margem (bruta|liquida|operacional|ebitda)|liquidez (corrente|seca|imediata)|indicadores? (contabeis|financeiros|fundamentalistas)|\broe\b|\broa\b|alavancagem|divida liquida|ebitda|fundamentos da empresa|analise fundamentalista)/ },
-    { intent: 'finrisco', re: /(retorno e risco|risco e retorno|analise (de risco|financeira|de carteira)|volatilidade|\bsharpe\b|\bsortino\b|drawdown|perda maxima|maior queda|value at risk|risco d[aeo]s? |rentabilidade|retorno (acumulado|do periodo|anualizado)|\bcagr\b|desempenho d[ao] (ativo|carteira|fundo|acao|cota))/ },
+    { intent: 'finrisco', re: /(retorno e risco|risco e retorno|analise (de risco|financeira|de carteira)|volatilidade|\bsharpe\b|\bsortino\b|drawdown|perda maxima|maior queda|value at risk|risco d[aeo]s? (?!concentra)|rentabilidade|retorno (acumulado|do periodo|anualizado)|\bcagr\b|desempenho d[ao] (ativo|carteira|fundo|acao|cota))/ },
     { intent: 'indexed', re: /(base 100|indexad|indice base|comparar (series|evolucao)|mesmo ponto de partida)/ },
     { intent: 'segment', re: /(segmentar|segmentacao automatica|cluster|k-?means|agrupar automaticamente|perfis naturais|grupos naturais)/ },
     { intent: 'forecast', re: /(projec|proje[cç]|previs|prever|forecast|tendencia futura|proximos? (\d+ )?(meses|anos|semanas|dias)|quanto vamos|estimativa futura|cenario)/ },
@@ -4659,7 +5005,10 @@ const RECEITAS_ARQUIVO = [
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
     finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
-    fincompara: 1, fincarteira: 1, contabil: 1 };
+    fincompara: 1, fincarteira: 1, contabil: 1,
+    /* a consulta por identificador não sai da base carregada: não há dimensão
+       nem medida a exigir, e exigir uma seria inventar requisito */
+    consulta: 1 };
   /* intenções que sem uma dimensão não têm o que mostrar */
   const NEEDS_DIM = { ranking: 1, distribution: 1, crosstab: 1, pivot: 1, abc: 1, compare: 1,
     movers: 1, contribution: 1, boxplot: 1, indexed: 1, scan: 1, multigroup: 1 };
@@ -4888,7 +5237,19 @@ const RECEITAS_ARQUIVO = [
 
     /* intenção */
     let intent = null, intentExplicit = false;
-    for (const r of INTENT_RULES) if (r.re.test(q)) { intent = r.intent; intentExplicit = true; break; }
+    /* Consulta por identificador vem antes de toda regra, e não por regex: a
+       palavra "CNPJ" sozinha é a intenção `documents` (validar a coluna de uma
+       base). O que separa uma da outra é haver um CNPJ CONCRETO na frase, com
+       dígito que fecha e fonte no catálogo que o resolva — coisa que só o
+       detector sabe dizer. Regex aqui roubaria "valide os CNPJs da base". */
+    if (AG.consulta) {
+      const ids = AG.consulta.detectar(question);
+      const util = ids.filter((d) => d.valido && (AG.consulta.fontesPara(d.tipo).length || d.semFonte));
+      if (util.length) { intent = 'consulta'; intentExplicit = true; }
+    }
+    if (!intent) {
+      for (const r of INTENT_RULES) if (r.re.test(q)) { intent = r.intent; intentExplicit = true; break; }
+    }
 
     /* agregação explícita */
     let agg = null;
@@ -10705,6 +11066,259 @@ const RECEITAS_ARQUIVO = [
 })();
 
 
+/* ==== 76-consulta.js ==== */
+/* ============================================================
+   76 — CONSULTA POR IDENTIFICADOR
+
+   "dados do CNPJ 00.000.000/0001-91" e "o CEP 60160-230" são perguntas
+   que o agente não tinha como responder: o dado não está em nenhuma base
+   carregada, está numa API que o catálogo já conhece. Achar a fonte certa
+   no catálogo, montar a URL e clicar era trabalho do usuário.
+
+   A rede continua só saindo no clique. O que muda é que o agente reconhece
+   o identificador, escolhe a fonte, monta a chamada e deixa o botão pronto —
+   a autorização continua sendo do usuário, e o rodapé auditável continua
+   gravando a URL exata.
+
+   Este módulo não toca em DOM nem em rede: ele só diz o que foi reconhecido
+   e quais fontes sabem responder. Assim ele é testável sem navegador, que é
+   onde erro de validação de dígito aparece barato.
+   ============================================================ */
+
+(function () {
+  const F = () => AG.fontes;
+
+  /* ---------- validação de dígito verificador ----------
+     Um CNPJ com dígito errado não é "um CNPJ que a API não achou": é um
+     número que nunca existiu. Dizer isso antes da chamada evita atribuir à
+     fonte uma falha que é de digitação. */
+  const P1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];              // 12 posições
+  const P2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];           // 13 posições
+  function digitosCNPJ(base12) {
+    const calc = (nums, pesos) => {
+      let s = 0;
+      for (let i = 0; i < nums.length; i++) s += nums[i] * pesos[i];
+      const r = s % 11;
+      return r < 2 ? 0 : 11 - r;
+    };
+    const n = base12.split('').map(Number);
+    const d1 = calc(n, P1);
+    const d2 = calc(n.concat([d1]), P2);
+    return '' + d1 + d2;
+  }
+  function cnpjValido(s) {
+    const d = String(s).replace(/\D/g, '');
+    if (d.length !== 14) return false;
+    if (/^(\d)\1{13}$/.test(d)) return false;          // 00000000000000 e irmãos
+    return digitosCNPJ(d.slice(0, 12)) === d.slice(12);
+  }
+  function cpfValido(s) {
+    const d = String(s).replace(/\D/g, '');
+    if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+    const dig = (ate) => {
+      let sm = 0;
+      for (let i = 0; i < ate; i++) sm += Number(d[i]) * (ate + 1 - i);
+      const r = (sm * 10) % 11;
+      return r === 10 ? 0 : r;
+    };
+    return dig(9) === Number(d[9]) && dig(10) === Number(d[10]);
+  }
+
+  /* Código do IBGE de município: 7 dígitos, os dois primeiros são a UF (11–53),
+     e o último é verificador. Sem essa checagem, qualquer número de 7 dígitos
+     numa frase viraria "consulta de município". */
+  const UF_COD = [11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    31, 32, 33, 35, 41, 42, 43, 50, 51, 52, 53];
+  function ibgeMunicipioValido(s) {
+    const d = String(s).replace(/\D/g, '');
+    if (d.length !== 7) return false;
+    return UF_COD.indexOf(Number(d.slice(0, 2))) >= 0;
+  }
+
+  /* ---------- o que o agente reconhece ---------- */
+  const TIPOS = {
+    cnpj: {
+      rot: 'CNPJ', param: 'cnpj', digitos: 14,
+      /* aceita pontuado e cru; a fronteira impede casar com os 14 primeiros
+         dígitos de um número maior, que seria outro dado qualquer */
+      re: /(?<![\d.\-/])(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})(?![\d.\-/])/g,
+      valida: cnpjValido,
+      invalido: 'os dígitos verificadores não fecham — confira a digitação antes de culpar a fonte'
+    },
+    cep: {
+      rot: 'CEP', param: 'cep', digitos: 8,
+      re: /(?<![\d.\-/])(\d{5}[-\s]?\d{3})(?![\d.\-/])/g,
+      valida: (s) => {
+        const d = String(s).replace(/\D/g, '');
+        return d.length === 8 && !/^0{8}$/.test(d);
+      },
+      invalido: 'CEP precisa de 8 dígitos'
+    },
+    ibge: {
+      rot: 'Código IBGE do município', param: 'codigo_ibge', digitos: 7,
+      re: /(?<![\d.\-/])(\d{7})(?![\d.\-/])/g,
+      valida: ibgeMunicipioValido,
+      invalido: 'os dois primeiros dígitos não correspondem a nenhuma UF'
+    },
+    cpf: {
+      rot: 'CPF', param: 'cpf', digitos: 11,
+      re: /(?<![\d.\-/])(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})(?![\d.\-/])/g,
+      valida: cpfValido,
+      invalido: 'os dígitos verificadores não fecham',
+      semFonte: 'Não existe fonte pública que devolva dados de CPF por consulta aberta — ' +
+        'e não deveria existir. O agente não tem como responder isso, e não vai fingir que tem.'
+    }
+  };
+
+  /* A ordem importa: 14 dígitos antes de 11, 11 antes de 8, 8 antes de 7.
+     O CNPJ 00000000000191 contém, como substring, sequências do tamanho de
+     um CPF e de um CEP. Reconhecer o maior primeiro e marcar os trechos já
+     consumidos evita que um único número vire três consultas. */
+  const ORDEM = ['cnpj', 'cpf', 'cep', 'ibge'];
+
+  /** Palavra do usuário pesa mais que o formato: "cep 60160230" é CEP mesmo
+      que 60160230 também caiba como outra coisa. */
+  const PISTAS = {
+    cnpj: /\bcnpj\b|\bempresa\b|\bfornecedor\b|\bmatriz\b|\bfilial\b|razao social|raz[aã]o social|quadro societario|\bqsa\b|\bs[oó]cios?\b/,
+    cpf: /\bcpf\b/,
+    cep: /\bcep\b|\bendere[cç]o\b|\blogradouro\b|\bbairro\b/,
+    ibge: /\bibge\b|c[oó]digo do munic[ií]pio|\bmunic[ií]pio\b|\bcidade\b|\bente\b/
+  };
+
+  /**
+   * Identificadores citados na pergunta.
+   * Devolve [{tipo, rot, valor (só dígitos), bruto, valido, motivo}].
+   */
+  function detectar(pergunta) {
+    const txt = String(pergunta || '');
+    const n = AG.norm(txt);
+    const achados = [];
+    const consumido = [];                       // [inicio, fim) já atribuídos
+    const colide = (i, f) => consumido.some(([a, b]) => i < b && f > a);
+
+    for (const tipo of ORDEM) {
+      const T = TIPOS[tipo];
+      const re = new RegExp(T.re.source, 'g');
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const i = m.index, f = i + m[0].length;
+        if (colide(i, f)) continue;
+        const dig = m[1].replace(/\D/g, '');
+        if (dig.length !== T.digitos) continue;
+        /* Sem pontuação e sem palavra-pista, um número de 7 ou 8 dígitos é
+           quase sempre um valor qualquer da frase, não um identificador.
+           Exigir a pista nesses dois casos é o que impede "vendas de 60160230"
+           virar consulta de CEP. */
+        const pontuado = /[.\-/]/.test(m[1]);
+        const temPista = PISTAS[tipo].test(n);
+        if ((tipo === 'cep' || tipo === 'ibge') && !temPista && !pontuado) continue;
+        consumido.push([i, f]);
+        const ok = T.valida(dig);
+        achados.push({
+          tipo: tipo, rot: T.rot, param: T.param, valor: dig, bruto: m[1].trim(),
+          valido: ok, motivo: ok ? null : T.invalido,
+          semFonte: T.semFonte || null, pista: temPista
+        });
+      }
+    }
+    /* Com pista explícita na frase, o tipo citado vem primeiro. */
+    achados.sort((a, b) => (b.pista ? 1 : 0) - (a.pista ? 1 : 0));
+    return achados;
+  }
+
+  /* RESOLVER um identificador e FILTRAR por ele são coisas diferentes, e
+     confundi-las entrega a base errada com ar de acerto. O PNCP aceita
+     `cnpjOrgao` como filtro opcional na query: devolve os contratos de um
+     ÓRGÃO, não o cadastro da empresa. O Minha Receita põe o CNPJ no próprio
+     caminho da URL — a chamada inteira é sobre aquela empresa.
+
+     O critério sai do próprio catálogo, sem campo novo: a fonte resolve o
+     identificador quando o valor de exemplo do parâmetro está no CAMINHO
+     da URL base. Fora do caminho, é filtro. */
+  function resolve(f, tipo) {
+    const p = paramDe(f, tipo);
+    if (!p || !p.v) return false;
+    const base = String(f.base || '');
+    const q = base.indexOf('?');
+    const caminho = q >= 0 ? base.slice(0, q) : base;
+    return caminho.indexOf('/' + p.v) >= 0 || caminho.indexOf('/' + encodeURIComponent(p.v)) >= 0;
+  }
+  const ordena = (a, b) => (b.core ? 1 : 0) - (a.core ? 1 : 0) || (b.peso || 0) - (a.peso || 0);
+
+  /** Fontes vivas que devolvem O REGISTRO daquele identificador. */
+  function fontesPara(tipo) {
+    if (!TIPOS[tipo]) return [];
+    return F().FONTES.filter((f) => f.acesso === 'live' && resolve(f, tipo)).sort(ordena);
+  }
+  /** Fontes vivas que aceitam o identificador como FILTRO — outra pergunta,
+      outra granularidade, e por isso oferecidas em separado. */
+  function fontesQueFiltram(tipo) {
+    if (!TIPOS[tipo]) return [];
+    return F().FONTES
+      .filter((f) => f.acesso === 'live' && !resolve(f, tipo) && (f.params || []).some((p) => casaParam(p.n, tipo)))
+      .sort(ordena);
+  }
+  function casaParam(nome, tipo) {
+    const n = AG.norm(nome);
+    if (tipo === 'cnpj') return /cnpj/.test(n);
+    if (tipo === 'cpf') return /\bcpf\b/.test(n);
+    if (tipo === 'cep') return /cep/.test(n);
+    if (tipo === 'ibge') return /(codigo|cod)?.*(ibge|municipio)/.test(n) || n === 'id';
+    return false;
+  }
+
+  /** O nome do parâmetro, tal como a fonte o declara. */
+  function paramDe(f, tipo) {
+    return (f.params || []).find((p) => casaParam(p.n, tipo)) || null;
+  }
+
+  /** Colunas de uma base que carregam identificadores deste tipo, para o lote. */
+  function colunasCom(ds, tipo) {
+    const T = TIPOS[tipo];
+    if (!T || !ds || !ds.columns) return [];
+    const out = [];
+    for (const c of ds.columns) {
+      const nomeCasa = PISTAS[tipo].test(AG.norm(c.label || c.key));
+      let validos = 0, olhados = 0;
+      for (let i = 0; i < ds.rows.length && olhados < 60; i++) {
+        const v = ds.rows[i][c.key];
+        if (v === null || v === undefined || v === '') continue;
+        olhados++;
+        const d = String(v).replace(/\D/g, '');
+        if (d.length === T.digitos && T.valida(d)) validos++;
+      }
+      const taxa = olhados ? validos / olhados : 0;
+      /* Nome sugestivo baixa a exigência, mas nunca dispensa o conteúdo:
+         uma coluna chamada "cnpj" cheia de texto não é coluna de CNPJ. */
+      if (taxa >= (nomeCasa ? 0.3 : 0.8) && validos >= 1) {
+        out.push({ key: c.key, label: c.label || c.key, taxa: taxa, validos: validos, olhados: olhados });
+      }
+    }
+    return out.sort((a, b) => b.taxa - a.taxa);
+  }
+
+  /** Valores distintos e válidos de uma coluna, prontos para o lote. */
+  function valoresDe(ds, colKey, tipo) {
+    const T = TIPOS[tipo];
+    const vistos = new Set();
+    const out = [];
+    for (const r of ds.rows) {
+      const v = r[colKey];
+      if (v === null || v === undefined || v === '') continue;
+      const d = String(v).replace(/\D/g, '').padStart(T.digitos, '0');
+      if (d.length !== T.digitos || !T.valida(d) || vistos.has(d)) continue;
+      vistos.add(d); out.push(d);
+    }
+    return out;
+  }
+
+  AG.consulta = {
+    detectar, fontesPara, fontesQueFiltram, resolve, paramDe, casaParam, colunasCom, valoresDe,
+    cnpjValido, cpfValido, ibgeMunicipioValido, TIPOS, ORDEM
+  };
+})();
+
+
 /* ==== 80-app.js ==== */
 /* ============================================================
    80 — APLICAÇÃO: ingestão, conversa, drill-down e reaprendizado
@@ -10979,6 +11593,23 @@ const RECEITAS_ARQUIVO = [
   }
 
   /* ---------- painel lateral ---------- */
+  /* Varre no máximo 60 linhas por coluna (é o que `colunasCom` olha), então
+     roda a cada redesenho do painel sem custo perceptível. O resultado fica
+     no próprio dataset porque o painel é redesenhado com frequência. */
+  function podeEnriquecer(ds) {
+    if (!AG.consulta || !AG.consultaUI) return false;
+    if (ds._enriquecivel !== undefined) return ds._enriquecivel;
+    let ok = false;
+    try {
+      for (const t of AG.consulta.ORDEM) {
+        if (!AG.consulta.fontesPara(t).length) continue;
+        if (AG.consulta.colunasCom(ds, t).length) { ok = true; break; }
+      }
+    } catch (e) { void e; }
+    ds._enriquecivel = ok;
+    return ok;
+  }
+
   function renderSources() {
     const box = AG.$('#sources');
     box.innerHTML = '';
@@ -10999,6 +11630,12 @@ const RECEITAS_ARQUIVO = [
           ds.kind === 'table' ? el('button', {
             class: 'icon-btn', text: '⭳', title: 'Baixar esta base (Excel, CSV ou JSON)',
             onclick: () => AG.exportar.abrir(ds)
+          }) : null,
+          /* Só aparece quando há de fato uma coluna de CNPJ, CEP ou código de
+             município nesta base. Botão que não tem o que fazer é ruído. */
+          (ds.kind === 'table' && podeEnriquecer(ds)) ? el('button', {
+            class: 'icon-btn', text: '⊕', title: 'Enriquecer pela fonte pública (CNPJ, CEP, município)',
+            onclick: () => AG.consultaUI.abrirLote(ds)
           }) : null,
           el('button', { class: 'icon-btn', text: '✕', title: 'Remover', onclick: () => removeDataset(ds) })
         ]),
@@ -11423,6 +12060,22 @@ const RECEITAS_ARQUIVO = [
 
   function answer(question, body) {
     body.innerHTML = '';
+
+    /* Consulta por identificador é a única pergunta que não precisa de base:
+       o dado não está aqui, está numa API que o catálogo conhece. Por isso ela
+       vem ANTES do portão de "sem dados" — quem abre o arquivo e digita um
+       CNPJ deve receber o caminho, não um pedido de anexo. Continua sem rede:
+       o que aparece é a chamada montada e o botão. */
+    if (AG.consulta && AG.consultaUI) {
+      const ids = AG.consulta.detectar(question)
+        .filter((d) => !d.valido || d.semFonte || AG.consulta.fontesPara(d.tipo).length);
+      if (ids.length) {
+        APP.ultimoPlano = { question: question, intent: 'consulta', dimensions: [], filters: [], notes: [] };
+        AG.consultaUI.render(body, ids, question);
+        return;
+      }
+    }
+
     if (!APP.datasets.length) {
       body.appendChild(el('div', { class: 'headline', text: 'Ainda não há dados carregados' }));
       body.appendChild(el('div', { class: 'subline', html: 'Arraste arquivos CSV, XLSX, JSON, PDF, DOCX ou TXT para o painel à esquerda. Tudo é processado localmente, sem sair da sua máquina.' }));
@@ -15600,15 +16253,78 @@ const RECEITAS_ARQUIVO = [
   /* =========================================================
      5. VARREDURA DE SEGMENTOS COM FDR
      ========================================================= */
+
+  /** O diagnóstico de por que a varredura não roda: qual das três condições
+      faltou, com os números medidos na base — não uma mensagem genérica. */
+  function semAmostraParaVarrer(body, ds, plan, question, dimKey, measureCol, dimLbl, fmt) {
+    const MIN_N = 4, MIN_TOTAL = 12;
+    const ag = agrupaValores(ds, plan, dimKey, measureCol);
+    const grupos = ag.grupos.slice().sort((a, b) => b.values.length - a.values.length);
+    const total = grupos.reduce((s, g) => s + g.values.length, 0);
+    const testaveis = grupos.filter((g) => g.values.length >= MIN_N);
+    const medLbl = U().labelOf(ds, measureCol);
+
+    head(body, 'Não dá para dizer quem foge da média · ' + dimLbl,
+      U().describePlan(plan, ds) + ' · ' + AG.fmtNum(total) + ' valores de <b>' + AG.esc(medLbl) +
+      '</b> em ' + AG.fmtNum(grupos.length) + ' ' + AG.esc(dimLbl.toLowerCase()));
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Segmentos', String(grupos.length), 'com pelo menos um valor'),
+      U().kpi('Comparáveis', String(testaveis.length), 'com ' + MIN_N + '+ registros cada'),
+      U().kpi('Valores no total', AG.fmtNum(total), 'mínimo de ' + MIN_TOTAL + ' para testar')
+    ]));
+
+    const motivo = total < MIN_TOTAL
+      ? 'A base tem <b>' + AG.fmtNum(total) + '</b> valores numéricos neste recorte, e um teste de médias precisa de pelo menos ' + MIN_TOTAL + '.'
+      : grupos.length < 2
+        ? 'Há um único segmento neste recorte. Comparar exige pelo menos dois.'
+        : 'Nenhum segmento chega a <b>' + MIN_N + ' registros</b>. O maior tem ' +
+          AG.fmtNum(grupos.length ? grupos[0].values.length : 0) + '. Com amostra assim, a diferença entre médias é ruído — qualquer p-valor calculado seria teatro.';
+    body.appendChild(U().insightNode(ins('warn', '∅', motivo +
+      ' Responder mesmo assim daria um número com aparência de conclusão e nenhuma base — por isso o agente não responde.')));
+
+    if (grupos.length) {
+      const td = {
+        columns: [
+          { key: 'seg', label: dimLbl },
+          { key: 'n', label: 'Registros', numeric: true },
+          { key: 'media', label: 'Média de ' + medLbl, numeric: true },
+          { key: 'falta', label: 'Falta para comparar', numeric: true }
+        ],
+        rows: grupos.slice(0, 20).map((g) => ({
+          seg: g.label,
+          n: AG.fmtNum(g.values.length),
+          media: AG.fmtCompact(AG.stats.mean(g.values), fmt),
+          falta: g.values.length >= MIN_N ? '—' : AG.fmtNum(MIN_N - g.values.length) + ' registros'
+        }))
+      };
+      body.appendChild(el('div', { class: 'sec-tit', text: 'O que existe hoje, por segmento' }));
+      body.appendChild(charts.dataTable(td));
+      if (grupos.length > 20) {
+        body.appendChild(el('div', { class: 'subline', text: 'Mostrando os 20 maiores de ' + AG.fmtNum(grupos.length) + '.' }));
+      }
+    }
+
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'O que destrava: mais linhas por segmento, um recorte de período mais largo, ou agrupar por uma dimensão mais grossa. ' +
+      'Para só ver a ordem dos segmentos sem afirmar diferença estatística, pergunte <b>"' +
+      AG.esc(medLbl.toLowerCase()) + ' por ' + AG.esc(dimLbl.toLowerCase()) + '"</b>.')));
+
+    foot(body, question, plan, ds, fakeRes(plan, ds, ag.rows.length));
+  }
+
   AG.renderers.scan = function (body, ds, plan, question) {
     const dimKey = plan.dimensions[0];
     if (!dimKey) throw new Error('preciso de uma dimensão para varrer os segmentos');
     const measureCol = plan.measure.column || (AG.nlu.pickDefaultMeasure(ds) || {}).key;
     if (!measureCol) throw new Error('preciso de uma coluna numérica para comparar os segmentos');
     const sc = R.scanSegments(ds, plan, dimKey, measureCol, {});
-    if (!sc) throw new Error('não há segmentos com registros suficientes para comparar');
     const fmt = plan.measure.format;
     const dimLbl = U().labelOf(ds, dimKey);
+    /* Amostra insuficiente não é falha do renderizador — é a resposta certa.
+       Cair no ranking genérico entregaria um número onde o honesto é dizer
+       por que o número não existe, e com quantas linhas ele passaria a existir. */
+    if (!sc) { semAmostraParaVarrer(body, ds, plan, question, dimKey, measureCol, dimLbl, fmt); return; }
 
     head(body, 'Quem realmente foge da média · ' + dimLbl,
       U().describePlan(plan, ds) + ' · ' + sc.comparacoes + ' comparações · cada segmento contra todos os demais');
@@ -17635,26 +18351,11 @@ const RECEITAS_ARQUIVO = [
     return url;
   }
 
-  /** Achata objetos aninhados: a.b.c vira uma coluna só, que é o que o motor lê. */
-  function achatar(o, pre, alvo) {
-    alvo = alvo || {}; pre = pre || '';
-    if (o === null || typeof o !== 'object') { alvo[pre || 'valor'] = o; return alvo; }
-    if (Array.isArray(o)) { alvo[pre] = JSON.stringify(o); return alvo; }
-    for (const k in o) {
-      const v = o[k];
-      const ch = pre ? pre + '.' + k : k;
-      if (v && typeof v === 'object' && !Array.isArray(v)) achatar(v, ch, alvo);
-      else alvo[ch] = Array.isArray(v) ? JSON.stringify(v) : v;
-    }
-    return alvo;
-  }
-  function extrairLinhas(j) {
-    if (Array.isArray(j)) return j;
-    for (const k of ['items', 'data', 'value', 'features', 'registros', 'results']) {
-      if (j && Array.isArray(j[k])) return j[k];
-    }
-    return null;
-  }
+  /* A forma da resposta mora no módulo 28, testável sem navegador. Aqui ficam
+     só os apelidos que o resto do arquivo e os testes já usavam. */
+  const RA = () => AG.respostaAPI;
+  const achatar = (o, pre, alvo) => RA().achatar(o, pre, alvo);
+  const extrairLinhas = (j) => RA().extrairLinhas(j);
 
   /* =========================================================
      TRAZER PARA O AGENTE
@@ -17674,6 +18375,70 @@ const RECEITAS_ARQUIVO = [
       if (AG.ui && AG.ui.renderSources) AG.ui.renderSources();
     }
     return AG.APP.datasets.length > antes;
+  }
+
+  /* =========================================================
+     UM REGISTRO QUE CARREGA LISTAS DENTRO
+     A resposta de um CNPJ é uma empresa E um quadro de sócios. São duas
+     tabelas com granularidades diferentes, e nenhuma delas é "a resposta"
+     mais que a outra. Escolher sozinho seria o mesmo erro do filtro
+     aplicado em silêncio no download: entregar uma base plausível que não
+     é a que a pessoa queria. Aqui a escolha é mostrada com as contagens,
+     e nada é buscado de novo — o que está em mãos é o que foi conferido.
+     ========================================================= */
+  function escolherOQueTrazer(out, forma, nome, url) {
+    const reg = forma.linhas[0];
+    const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
+    cx.appendChild(el('h3', { class: 'sec-tit', text: 'Esta resposta tem mais de uma tabela dentro' }));
+    cx.appendChild(el('div', {
+      class: 'subline',
+      html: 'Veio <b>um registro</b> com ' +
+        forma.listas.map((l) => '<b>' + AG.fmtNum(l.n) + '</b> em <code>' + AG.esc(l.chave) + '</code>').join(' e ') +
+        '. São granularidades diferentes — escolha o que vira base. ' +
+        'Nada será buscado de novo: o que entra é exatamente o que você acabou de conferir.'
+    }));
+
+    const linha = el('div', { class: 'btn-row', style: { marginTop: '10px', flexWrap: 'wrap' } });
+    const opcoes = [{
+      rot: 'O registro principal · 1 linha',
+      sub: Object.keys(achatar(reg)).length + ' colunas',
+      nome: nome,
+      linhas: [reg]
+    }].concat(forma.listas.map((l) => ({
+      rot: l.chave + ' · ' + AG.fmtNum(l.n) + (l.n === 1 ? ' linha' : ' linhas'),
+      sub: 'a lista de dentro, como tabela própria',
+      nome: nome + ' — ' + l.chave,
+      linhas: l.linhas
+    })));
+    opcoes.push({
+      rot: 'As duas, como bases separadas',
+      sub: 'cruzáveis depois pelo identificador',
+      nome: null,
+      todas: true
+    });
+
+    const ingere = async (op) => {
+      linha.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      let n = 0;
+      if (op.todas) {
+        if (await trazer(nome, [reg], url)) n++;
+        for (const l of forma.listas) if (await trazer(nome + ' — ' + l.chave, l.linhas, url)) n++;
+      } else if (await trazer(op.nome, op.linhas, url)) n = 1;
+      if (n) {
+        fechar();
+        AG.toast(n === 1 ? (op.nome || nome) + ' carregada.' : n + ' bases carregadas.');
+      } else {
+        cx.appendChild(aviso('crit', 'Os registros vieram, mas não formaram uma tabela utilizável.'));
+      }
+    };
+
+    for (const op of opcoes) {
+      const b = el('button', { class: 'btn sm' + (op.todas ? '' : ' primary'), title: op.sub, text: op.rot });
+      b.addEventListener('click', () => { ingere(op); });
+      linha.appendChild(b);
+    }
+    cx.appendChild(linha);
+    out.appendChild(cx);
   }
 
   /**
@@ -17743,7 +18508,8 @@ const RECEITAS_ARQUIVO = [
         throw new Error('a resposta não é JSON nem tabela delimitada (' + txt.length + ' bytes)');
       }
 
-      let linhas = extrairLinhas(j);
+      const forma = RA().analisar(j);
+      let linhas = forma.linhas;
       let truncou = false, paginas = 1;
       if (cfg.paginar && j && Array.isArray(j.items) && j.hasMore) {
         botao.textContent = 'Página 2…';
@@ -17754,7 +18520,7 @@ const RECEITAS_ARQUIVO = [
       mostrarResultado(out, {
         ok: r.ok, status: r.status, ms: Date.now() - t0, bytes: txt.length,
         linhas: linhas, bruto: j, paginas: paginas, truncou: truncou,
-        nome: nome, url: url
+        nome: nome, url: url, forma: forma
       });
       if (f.id && AG.kb && AG.kb.registrarAuditoria) {
         AG.kb.registrarAuditoria(f.id, {
@@ -17765,6 +18531,14 @@ const RECEITAS_ARQUIVO = [
 
       if (!linhas || !linhas.length) return;
       if (!cfg.ingerir) return;
+
+      /* Registro único que carrega listas dentro (empresa + quadro de sócios):
+         são duas bases diferentes, e escolher por conta própria seria decidir
+         em silêncio entre uma e outra. Mesma regra do filtro no download. */
+      if (forma.forma === 'registro' && forma.listas.length) {
+        escolherOQueTrazer(out, forma, nome, url);
+        return;
+      }
 
       const total = Date.now() - t0;
       const ok = await trazer(nome, linhas, url);
@@ -17826,6 +18600,16 @@ const RECEITAS_ARQUIVO = [
     cab.appendChild(marca(r.ms + ' ms'));
     cab.appendChild(marca((r.bytes / 1024).toFixed(1) + ' KB'));
     if (r.linhas) cab.appendChild(marca(AG.fmtNum(r.linhas.length) + ' registros'));
+    /* De ONDE a tabela saiu, à vista: "registro único" e "lista em result.records"
+       são leituras diferentes da mesma resposta, e a diferença aparece aqui —
+       não depois, quando a base já estiver com o número de linhas errado. */
+    if (r.forma && r.linhas && r.linhas.length) {
+      const fm = r.forma;
+      cab.appendChild(marca(
+        fm.forma === 'registro' ? 'registro único' :
+          fm.forma === 'envelope' ? 'lista em ' + fm.caminho :
+            fm.forma === 'lista' ? 'lista na raiz' : fm.forma));
+    }
     if (r.paginas > 1) cab.appendChild(marca(r.paginas + ' páginas'));
     const b = r.bruto || {};
     if (b.count !== null && b.count !== undefined) cab.appendChild(marca('count ' + b.count));
@@ -17835,9 +18619,18 @@ const RECEITAS_ARQUIVO = [
     cx.appendChild(cab);
 
     if (!r.linhas || !r.linhas.length) {
-      cx.appendChild(aviso('warn', r.linhas
-        ? 'A consulta funcionou, mas <b>não há registros</b> para esses parâmetros. Confira exercício, período e código do ente.'
-        : 'A resposta veio, mas não tem uma lista de registros reconhecível.'));
+      const fm = r.forma || {};
+      cx.appendChild(aviso('warn',
+        fm.forma === 'recusa'
+          ? 'A API respondeu <b>HTTP ' + r.status + '</b>, mas o corpo é uma recusa: <b>' +
+            AG.esc(fm.erro || 'sem detalhe') + '</b>. Vários serviços brasileiros erram assim, com status 200 — ' +
+            'confira o valor do parâmetro antes de concluir que a fonte está fora do ar.'
+          : r.linhas
+            ? 'A consulta funcionou, mas <b>não há registros</b> para esses parâmetros. Confira exercício, período e código do ente.'
+            : 'A resposta veio em um formato que o agente não sabe transformar em tabela. ' +
+              'Ele reconhece lista na raiz, envelope (<code>items</code>, <code>data</code>, <code>content</code>, ' +
+              '<code>records</code>, <code>value</code>, <code>features</code>…) e registro único. ' +
+              'O corpo está abaixo — se houver uma tabela aí, copie a URL e traga o arquivo pelo painel à esquerda.'));
       cx.appendChild(el('pre', {
         class: 'plan-body',
         text: (typeof r.bruto === 'string' ? r.bruto : JSON.stringify(r.bruto, null, 2)).slice(0, 2000)
@@ -18102,16 +18895,21 @@ const RECEITAS_ARQUIVO = [
     for (const p of (r.passos || [])) ol.appendChild(el('li', { text: p }));
     c.appendChild(ol);
     if (r.alternativa) c.appendChild(el('div', { class: 'hint', text: r.alternativa }));
-    if (r.portal) {
+    /* a receita de arquivo e a fonte do catálogo são a mesma coisa vista de
+       dois ângulos: o passo a passo e a ficha técnica. Ligar as duas evita
+       que quem chegou por um lado ache que o outro não existe. */
+    const noCatalogo = r.src ? F.FONTES.find((x) => x.id === r.src) : null;
+    if (r.portal || noCatalogo) {
       c.appendChild(el('div', { class: 'btn-row', style: { marginTop: '8px' } }, [
-        el('button', { class: 'btn sm primary', text: 'Abrir o portal', onclick: () => window.open(r.portal, '_blank', 'noopener') }),
-        el('button', {
-          class: 'btn sm', text: 'Copiar endereço',
+        r.portal ? el('button', { class: 'btn sm primary', text: 'Abrir o portal', onclick: () => window.open(r.portal, '_blank', 'noopener') }) : null,
+        noCatalogo ? el('button', { class: 'btn sm', text: 'Ficha no catálogo', onclick: () => detalhe(noCatalogo) }) : null,
+        r.portal ? el('button', {
+          class: 'btn sm ghost', text: 'Copiar endereço',
           onclick: () => {
             if (navigator.clipboard) navigator.clipboard.writeText(r.portal).then(() => AG.toast('Endereço copiado.'), () => AG.toast('Não consegui copiar.'));
             else AG.toast('Cópia não disponível neste navegador.');
           }
-        })
+        }) : null
       ]));
     }
     return c;
@@ -18260,7 +19058,13 @@ const RECEITAS_ARQUIVO = [
     dlgDet = d2;
   }
 
-  AG.fontesUI = { abrirFontes, montarURL, achatar, extrairLinhas, filtradas, estado, trazer };
+  /* `chamar` também serve fora do catálogo: a consulta por identificador
+     dispara a partir da resposta do agente, onde não há janela aberta —
+     e `fechar()` é inofensivo quando não há o que fechar. */
+  AG.fontesUI = {
+    abrirFontes, montarURL, achatar, extrairLinhas, filtradas, estado, trazer,
+    detalhe, chamarAvulso: chamar
+  };
 
   AG.hooks.push(function () {
     const b = AG.$('#btn-fontes');
@@ -19930,6 +20734,363 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.contabilUI = { abrirCompositor, estagiosDe };
+})();
+
+
+/* ==== 95-render-consulta.js ==== */
+/* ============================================================
+   95 — CONSULTA POR IDENTIFICADOR, NA RESPOSTA DO AGENTE
+
+   Duas telas:
+
+   1. Consulta unitária. Você escreve o CNPJ ou o CEP na pergunta; o agente
+      reconhece, escolhe a fonte, monta a URL e deixa o botão pronto. A rede
+      só sai no clique — a garantia escrita no manual continua valendo, e o
+      que muda é só quem procura a fonte no catálogo.
+
+   2. Enriquecimento em lote. Uma base com 800 CNPJs vira 800 consultas, e
+      é aí que uma rota pública gratuita é derrubada. Por isso: teto,
+      intervalo entre chamadas, progresso à vista, botão de parar, e o que
+      já veio é aproveitado mesmo se a interrupção for no meio.
+   ============================================================ */
+
+(function () {
+  const el = AG.el;
+  const U = () => AG.ui;
+  const C = () => AG.consulta;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+
+  /* Intervalo entre chamadas no lote. Não é otimização: a rota pública do
+     CNPJ.ws limita por taxa na documentação, e um lote sem pausa é a forma
+     mais rápida de fazer o usuário ser bloqueado pela fonte. */
+  const PAUSA_MS = 700;
+  const TETO_LOTE = 500;
+  const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* =========================================================
+     1. CONSULTA UNITÁRIA
+     ========================================================= */
+  AG.renderers.consulta = function (body, ds, plan, question) {
+    const achados = C().detectar(question);
+    if (!achados.length) throw new Error('não reconheci um CNPJ, CEP ou código de município na pergunta');
+    render(body, achados, question);
+  };
+
+  /** Usado também quando não há base nenhuma carregada — por isso separado
+      do renderizador, que exige `ds`. */
+  function render(body, achados, question) {
+    body.appendChild(el('div', {
+      class: 'headline',
+      text: achados.length === 1
+        ? achados[0].rot + ' ' + formata(achados[0])
+        : achados.length + ' identificadores na pergunta'
+    }));
+    body.appendChild(el('div', {
+      class: 'subline',
+      html: 'Este dado não está em nenhuma base carregada — está numa API pública que o catálogo conhece. ' +
+        '<b>Nada foi consultado ainda.</b> A chamada sai no seu clique, para o endereço mostrado aqui.'
+    }));
+
+    for (const a of achados) body.appendChild(cartao(a, question));
+
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'O resultado entra como <b>base comum</b>: responde a perguntas, cruza com o que já está carregado ' +
+      'e pode ser baixado. A URL exata fica gravada como origem no rodapé auditável.')));
+  }
+
+  function formata(a) {
+    const v = a.valor;
+    if (a.tipo === 'cnpj') return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    if (a.tipo === 'cpf') return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+    if (a.tipo === 'cep') return v.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+    return v;
+  }
+
+  function cartao(a, question) {
+    const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
+
+    /* Dígito verificador errado é problema de digitação, não da fonte.
+       Dizer isso antes da chamada evita que o usuário conclua que a API caiu. */
+    if (!a.valido) {
+      cx.appendChild(el('h3', { class: 'sec-tit', text: a.rot + ' ' + formata(a) + ' — não confere' }));
+      cx.appendChild(U().insightNode(ins('crit', '✕',
+        'Este número tem o formato de ' + AG.esc(a.rot) + ', mas <b>' + AG.esc(a.motivo) + '</b>. ' +
+        'Consultar assim gastaria uma requisição para receber "não encontrado" — e o motivo não seria a fonte.')));
+      return cx;
+    }
+
+    /* Existe pergunta, não existe fonte. É o caso do CPF, e a resposta certa
+       é dizer isso — não oferecer um caminho que não leva a lugar nenhum. */
+    if (a.semFonte) {
+      cx.appendChild(el('h3', { class: 'sec-tit', text: a.rot + ' ' + formata(a) }));
+      cx.appendChild(U().insightNode(ins('warn', '⚠', AG.esc(a.semFonte))));
+      return cx;
+    }
+
+    const resolvem = C().fontesPara(a.tipo);
+    const filtram = C().fontesQueFiltram(a.tipo);
+    if (!resolvem.length) {
+      cx.appendChild(el('h3', { class: 'sec-tit', text: a.rot + ' ' + formata(a) }));
+      cx.appendChild(U().insightNode(ins('warn', '⚠',
+        'Nenhuma fonte do catálogo responde a este tipo de consulta direto do navegador.')));
+      return cx;
+    }
+
+    cx.appendChild(el('h3', { class: 'sec-tit', text: a.rot + ' ' + formata(a) }));
+
+    const saida = el('div', { style: { marginTop: '10px' } });
+    const urlBox = el('code', { class: 'url-montada' });
+    let escolhida = resolvem[0];
+    const atualiza = () => { urlBox.textContent = urlDe(escolhida, a); };
+
+    if (resolvem.length > 1) {
+      const linha = el('div', { class: 'btn-row', style: { marginBottom: '8px', flexWrap: 'wrap' } });
+      const botoes = [];
+      resolvem.forEach((f) => {
+        const b = el('button', {
+          class: 'btn sm' + (f === escolhida ? ' primary' : ''),
+          text: f.nome.split(' — ')[0], title: f.nome
+        });
+        b.addEventListener('click', () => {
+          escolhida = f; atualiza();
+          botoes.forEach((x, i) => { x.className = 'btn sm' + (resolvem[i] === escolhida ? ' primary' : ''); });
+        });
+        botoes.push(b); linha.appendChild(b);
+      });
+      cx.appendChild(el('div', { class: 'subline', text: 'Fonte (há mais de uma; a segunda vale como redundância):' }));
+      cx.appendChild(linha);
+    } else {
+      cx.appendChild(el('div', { class: 'subline', html: 'Fonte: <b>' + AG.esc(escolhida.nome) + '</b>' }));
+    }
+
+    cx.appendChild(urlBox);
+    atualiza();
+
+    const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px', flexWrap: 'wrap' } });
+    const btn = el('button', { class: 'btn sm primary', text: 'Consultar e trazer' });
+    btn.addEventListener('click', () => {
+      AG.fontesUI.chamarAvulso(escolhida, urlDe(escolhida, a), saida, btn, {
+        nome: escolhida.nome.split(' — ')[0] + ' ' + formata(a), ingerir: true
+      });
+    });
+    acoes.appendChild(btn);
+
+    const btnT = el('button', { class: 'btn sm', text: 'Só testar' });
+    btnT.addEventListener('click', () => {
+      AG.fontesUI.chamarAvulso(escolhida, urlDe(escolhida, a), saida, btnT, { ingerir: false });
+    });
+    acoes.appendChild(btnT);
+
+    acoes.appendChild(el('button', {
+      class: 'btn sm ghost', text: 'Ficha da fonte',
+      onclick: () => AG.fontesUI.detalhe(escolhida)
+    }));
+    cx.appendChild(acoes);
+
+    if (filtram.length) {
+      cx.appendChild(el('div', {
+        class: 'subline', style: { marginTop: '8px' },
+        html: 'Outra pergunta, outra base: <b>' + AG.esc(filtram[0].nome) + '</b> aceita este ' +
+          AG.esc(a.rot) + ' como <b>filtro</b> — traz os registros ligados a ele, não o cadastro. ' +
+          'Abra a ficha para montar essa consulta.'
+      }));
+      const b2 = el('button', { class: 'btn sm ghost', text: 'Abrir ' + filtram[0].nome.split(' — ')[0] });
+      b2.addEventListener('click', () => AG.fontesUI.detalhe(filtram[0]));
+      cx.appendChild(el('div', { class: 'btn-row', style: { marginTop: '6px' } }, [b2]));
+    }
+
+    cx.appendChild(saida);
+    void question;
+    return cx;
+  }
+
+  function urlDe(f, a) {
+    const p = C().paramDe(f, a.tipo);
+    const vals = {};
+    for (const q of (f.params || [])) vals[q.n] = q.v;
+    if (p) vals[p.n] = a.valor;
+    return AG.fontesUI.montarURL(f, vals);
+  }
+
+  /* =========================================================
+     2. ENRIQUECIMENTO EM LOTE
+     Uma base com uma coluna de CNPJ vira uma segunda base, cruzável pela
+     mesma coluna. O que torna isso utilizável em produção não é o laço —
+     é o teto, a pausa, o progresso e o fato de o parcial valer.
+     ========================================================= */
+  function abrirLote(ds) {
+    const body = el('div');
+    const achados = [];
+    for (const tipo of C().ORDEM) {
+      if (!C().fontesPara(tipo).length) continue;
+      for (const c of C().colunasCom(ds, tipo)) achados.push({ tipo: tipo, col: c });
+    }
+
+    if (!achados.length) {
+      body.appendChild(el('div', { class: 'subline', html: 'Esta base não tem coluna com CNPJ, CEP ou código de município reconhecível. ' + 'O agente confere o <b>conteúdo</b>, não só o nome da coluna — uma coluna chamada "CNPJ" cheia de texto não conta.' }));
+      AG.modal('Enriquecer pela fonte pública', body, []);
+      return;
+    }
+
+    body.appendChild(el('div', {
+      class: 'subline',
+      html: 'Cada linha distinta vira <b>uma requisição</b> à fonte pública. ' +
+        'O agente pausa ' + PAUSA_MS + ' ms entre elas porque as rotas públicas limitam por taxa — ' +
+        'um lote sem pausa é a forma mais rápida de ser bloqueado. Dá para parar a qualquer momento, ' +
+        'e o que já veio vira base assim mesmo.'
+    }));
+
+    let sel = achados[0];
+    const resumo = el('div', { class: 'compositor-resumo' });
+    const fontes = el('div', { class: 'btn-row', style: { flexWrap: 'wrap', marginTop: '6px' } });
+    let fonte = null;
+
+    const atualiza = () => {
+      const vals = C().valoresDe(ds, sel.col.key, sel.tipo);
+      const disp = C().fontesPara(sel.tipo);
+      fonte = disp[0];
+      fontes.innerHTML = '';
+      const bs = [];
+      disp.forEach((f) => {
+        const b = el('button', { class: 'btn sm' + (f === fonte ? ' primary' : ''), text: f.nome.split(' — ')[0], title: f.nome });
+        b.addEventListener('click', () => {
+          fonte = f;
+          bs.forEach((x, i) => { x.className = 'btn sm' + (disp[i] === fonte ? ' primary' : ''); });
+        });
+        bs.push(b); fontes.appendChild(b);
+      });
+      const n = Math.min(vals.length, TETO_LOTE);
+      resumo.innerHTML = '';
+      resumo.appendChild(el('div', {
+        html: '<b>' + AG.fmtNum(vals.length) + '</b> ' + AG.esc(C().TIPOS[sel.tipo].rot) +
+          ' distintos e válidos na coluna <b>' + AG.esc(sel.col.label) + '</b>' +
+          (vals.length > TETO_LOTE ? ' — o lote para no teto de <b>' + TETO_LOTE + '</b>' : '') +
+          '. Tempo estimado: <b>' + tempo(n) + '</b>.'
+      }));
+      if (sel.col.taxa < 0.95) {
+        resumo.appendChild(el('div', {
+          class: 'hint',
+          html: AG.fmtNum(Math.round((1 - sel.col.taxa) * 100)) + '% das linhas olhadas nessa coluna não têm ' +
+            'identificador válido e ficam de fora — elas não desaparecem da sua base original.'
+        }));
+      }
+    };
+
+    if (achados.length > 1) {
+      body.appendChild(el('h3', { class: 'sec-tit', text: 'Coluna' }));
+      const linha = el('div', { class: 'btn-row', style: { flexWrap: 'wrap' } });
+      const bs = [];
+      achados.forEach((a) => {
+        const b = el('button', {
+          class: 'btn sm' + (a === sel ? ' primary' : ''),
+          text: a.col.label + ' · ' + C().TIPOS[a.tipo].rot
+        });
+        b.addEventListener('click', () => {
+          sel = a; atualiza();
+          bs.forEach((x, i) => { x.className = 'btn sm' + (achados[i] === sel ? ' primary' : ''); });
+        });
+        bs.push(b); linha.appendChild(b);
+      });
+      body.appendChild(linha);
+    }
+
+    body.appendChild(el('h3', { class: 'sec-tit', text: 'Fonte' }));
+    body.appendChild(fontes);
+    body.appendChild(resumo);
+    atualiza();
+
+    const prog = el('div', { style: { marginTop: '10px' } });
+    body.appendChild(prog);
+
+    let parar = false, rodando = false;
+    const btnIr = el('button', { class: 'btn primary', text: 'Consultar' });
+    const btnParar = el('button', { class: 'btn', text: 'Parar', style: { display: 'none' } });
+
+    btnParar.addEventListener('click', () => { parar = true; btnParar.textContent = 'Parando…'; });
+    btnIr.addEventListener('click', async () => {
+      if (rodando) return;
+      rodando = true; parar = false;
+      btnIr.style.display = 'none'; btnParar.style.display = '';
+      const vals = C().valoresDe(ds, sel.col.key, sel.tipo).slice(0, TETO_LOTE);
+      const r = await rodarLote(fonte, sel, vals, prog, () => parar);
+      btnParar.style.display = 'none';
+      rodando = false;
+      if (r.linhas.length) {
+        const nome = fonte.nome.split(' — ')[0] + ' · ' + sel.col.label;
+        const ok = await AG.fontesUI.trazer(nome, r.linhas, fonte.base + ' (lote de ' + r.linhas.length + ')');
+        prog.appendChild(U().insightNode(ins(ok ? 'good' : 'crit', ok ? '✓' : '✕',
+          ok
+            ? 'Base <b>' + AG.esc(nome) + '</b> criada com <b>' + AG.fmtNum(r.linhas.length) + '</b> registros. ' +
+              'Cruze com a original pela coluna <b>' + AG.esc(sel.col.label) + '</b>.'
+            : 'Os registros vieram, mas não formaram uma tabela utilizável.')));
+      } else {
+        prog.appendChild(U().insightNode(ins('warn', '∅', 'Nenhuma consulta devolveu registro. Nada foi criado.')));
+      }
+      btnIr.textContent = 'Consultar de novo';
+      btnIr.style.display = '';
+    });
+
+    AG.modal('Enriquecer pela fonte pública', body, [btnParar, btnIr]);
+  }
+
+  function tempo(n) {
+    const s = Math.round((n * PAUSA_MS) / 1000);
+    if (s < 60) return s + ' s';
+    const m = Math.floor(s / 60);
+    return m + ' min' + (s % 60 ? ' ' + (s % 60) + ' s' : '');
+  }
+
+  async function rodarLote(fonte, sel, vals, prog, deveParar) {
+    const linhas = [];
+    const erros = [];
+    const barra = el('div', { class: 'subline' });
+    const det = el('div', { class: 'hint' });
+    prog.innerHTML = '';
+    prog.appendChild(barra); prog.appendChild(det);
+
+    const p = C().paramDe(fonte, sel.tipo);
+    for (let i = 0; i < vals.length; i++) {
+      if (deveParar()) { det.textContent = 'Parado por você em ' + i + ' de ' + vals.length + '.'; break; }
+      const base = {};
+      for (const q of (fonte.params || [])) base[q.n] = q.v;
+      if (p) base[p.n] = vals[i];
+      const url = AG.fontesUI.montarURL(fonte, base);
+      barra.innerHTML = '<b>' + (i + 1) + '</b> de ' + AG.fmtNum(vals.length) +
+        ' · <b>' + AG.fmtNum(linhas.length) + '</b> com registro' +
+        (erros.length ? ' · ' + AG.fmtNum(erros.length) + ' sem' : '');
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+        const j = await r.json();
+        const forma = AG.respostaAPI.analisar(j);
+        if (forma.linhas && forma.linhas.length) {
+          /* A chave da consulta entra como coluna própria: sem ela a base
+             nova não cruza com a original, e uma base que não cruza é uma
+             base que não serve para o que foi pedido. */
+          for (const L of forma.linhas) {
+            const plano = AG.respostaAPI.achatar(L);
+            plano['_' + sel.tipo + '_consultado'] = vals[i];
+            linhas.push(plano);
+          }
+        } else {
+          erros.push({ valor: vals[i], motivo: forma.erro || ('sem registro (HTTP ' + r.status + ')') });
+        }
+      } catch (e) {
+        erros.push({ valor: vals[i], motivo: String(e.message || e) });
+      }
+      if (i < vals.length - 1 && !deveParar()) await espera(PAUSA_MS);
+    }
+
+    barra.innerHTML = '<b>' + AG.fmtNum(linhas.length) + '</b> registros obtidos' +
+      (erros.length ? ' · <b>' + AG.fmtNum(erros.length) + '</b> sem resposta útil' : '');
+    if (erros.length) {
+      det.innerHTML = 'Sem registro: ' +
+        erros.slice(0, 6).map((e) => '<code>' + AG.esc(e.valor) + '</code> (' + AG.esc(e.motivo) + ')').join(', ') +
+        (erros.length > 6 ? ' e mais ' + (erros.length - 6) + '.' : '');
+    }
+    return { linhas: linhas, erros: erros };
+  }
+
+  AG.consultaUI = { abrirLote, render, cartao, urlDe };
 })();
 
 </script>
