@@ -3020,6 +3020,23 @@ AG.colorFor = function (key, index) {
   const AUDIT_DATE = "05/09/2026";
   const P = (n, v, req, hint) => ({ n, v, req: !!req, hint: hint || "" });
 
+  /* ROTA: outra forma de chegar ao mesmo dado, na mesma fonte.
+     "Não sei o CEP, sei a rua" não é um caso de exceção — é o caso comum.
+     O ViaCEP sempre teve busca por endereço; o catálogo é que só conhecia
+     uma entrada por fonte, e por isso quem não tinha o CEP não tinha caminho.
+
+     `quando` é o que a tela mostra para você escolher: a pergunta não é
+     "qual endpoint", é "o que você tem em mãos". `devolve` diz se a rota
+     traz um registro ou uma lista — muda o que a resposta significa.
+
+     Estas rotas NÃO foram testadas no navegador daqui: entram com a mesma
+     regra da V13 — o primeiro "Testar agora" seu vira a auditoria, gravada
+     com a data. */
+  const R = (o) => ({
+    id: o.id, nome: o.nome, quando: o.quando, base: o.base, params: o.params || [],
+    devolve: o.devolve || "lista", nota: o.nota || "", produz: o.produz || []
+  });
+
 const FONTES = [
 /* ---------------- TERRITÓRIO E DEMOGRAFIA ---------------- */
 {
@@ -3032,7 +3049,22 @@ const FONTES = [
   cobertura:"Brasil — 5.570 municípios",
   auditoria:"HTTP 200, application/json, CORS liberado. Retorna array direto, sem envelope de paginação — a resposta completa vem numa chamada só (~1,7 MB).",
   doc:"https://servicodados.ibge.gov.br/api/docs/localidades",
-  chave:["municipio","cidade","codigo ibge","territorio","uf","microrregiao","mesorregiao"]
+  chave:["municipio","cidade","codigo ibge","territorio","uf","microrregiao","mesorregiao"],
+  rotas:[
+    R({ id:"todos", nome:"Todos os municípios", quando:"você quer a tabela inteira do Brasil", devolve:"lista",
+        base:"https://servicodados.ibge.gov.br/api/v1/localidades/municipios",
+        params:[P("orderBy","nome",false,"nome | id"),P("view","nivelado",false,"achata a hierarquia em colunas")],
+        nota:"São ~1,7 MB numa chamada só. Se você quer um estado, a rota por UF é muito menor.",
+        produz:["id","nome","uf"] }),
+    R({ id:"porUF", nome:"Por UF", quando:"você quer os municípios de um estado", devolve:"lista",
+        base:"https://servicodados.ibge.gov.br/api/v1/localidades/estados/CE/municipios",
+        params:[P("uf","CE",true,"sigla ou id da UF"),P("view","nivelado",false,"achata a hierarquia")],
+        produz:["id","nome","uf"] }),
+    R({ id:"porId", nome:"Por código IBGE", quando:"você tem o código de 7 dígitos e quer a hierarquia dele", devolve:"registro",
+        base:"https://servicodados.ibge.gov.br/api/v1/localidades/municipios/2304400",
+        params:[P("id","2304400",true,"código IBGE de 7 dígitos")],
+        produz:["id","nome","uf","microrregiao","mesorregiao"] })
+  ]
 },
 {
   id:"ibge-uf", nome:"Unidades da Federação", org:"IBGE", dom:"territorio", acesso:"live",
@@ -3103,7 +3135,23 @@ const FONTES = [
   cobertura:"Brasil por UF",
   auditoria:"HTTP 200, CORS liberado. Retornou 184 municípios do Ceará em nome/codigo_ibge. Serviço mantido pela comunidade — sem SLA institucional.",
   doc:"https://brasilapi.com.br/docs",
-  chave:["municipio","uf","brasilapi","codigo ibge"]
+  chave:["municipio","uf","brasilapi","codigo ibge","ddd"],
+  rotas:[
+    R({ id:"porUF", nome:"Por UF", quando:"você tem a sigla do estado", devolve:"lista",
+        base:"https://brasilapi.com.br/api/ibge/municipios/v1/CE",
+        params:[P("uf","CE",true,"sigla da UF no caminho"),P("providers","dados-abertos-br,gov,wikipedia",false,"fontes agregadas")],
+        produz:["nome","codigo_ibge"] }),
+    R({ id:"porDDD", nome:"Por DDD", quando:"você só tem o código de área do telefone", devolve:"registro",
+        base:"https://brasilapi.com.br/api/ddd/v1/85",
+        params:[P("ddd","85",true,"dois dígitos")],
+        nota:"Devolve a UF e a lista de cidades daquele DDD — o caminho quando o que se tem é um telefone, não um endereço.",
+        produz:["state","cities"] }),
+    R({ id:"porCEP", nome:"Por CEP (com coordenadas)", quando:"você tem o CEP e quer também latitude e longitude", devolve:"registro",
+        base:"https://brasilapi.com.br/api/cep/v2/60160230",
+        params:[P("cep","60160230",true,"somente dígitos")],
+        nota:"Segunda via do ViaCEP, e traz `location.coordinates` quando o provedor tem — vale quando o ViaCEP não acha.",
+        produz:["cep","street","neighborhood","city","state","location"] })
+  ]
 },
 {
   id:"viacep", nome:"ViaCEP — endereçamento postal", org:"Comunidade", dom:"territorio", acesso:"live",
@@ -3115,7 +3163,19 @@ const FONTES = [
   cobertura:"Brasil",
   auditoria:"HTTP 200, CORS liberado. CEP inexistente responde 200 com {\"erro\":\"true\"} — trate esse caso, não confie apenas no status HTTP.",
   doc:"https://viacep.com.br/",
-  chave:["cep","endereco","logradouro","bairro"]
+  chave:["cep","endereco","logradouro","bairro","rua","avenida","endereco completo"],
+  rotas:[
+    R({ id:"cep", nome:"Por CEP", quando:"você tem o CEP", devolve:"registro",
+        base:"https://viacep.com.br/ws/60160230/json/",
+        params:[P("cep","60160230",true,"somente dígitos")],
+        produz:["cep","logradouro","bairro","municipio","uf","ibge"] }),
+    R({ id:"endereco", nome:"Por endereço", quando:"você sabe a rua e a cidade, mas NÃO o CEP", devolve:"lista",
+        base:"https://viacep.com.br/ws/CE/Fortaleza/Desembargador Moreira/json/",
+        params:[P("uf","CE",true,"sigla da UF"),P("cidade","Fortaleza",true,"nome do município"),
+                P("logradouro","Desembargador Moreira",true,"parte do nome da rua serve")],
+        nota:"Cidade e logradouro precisam de 3 caracteres ou mais. A resposta é uma LISTA: uma rua longa costuma ter vários CEPs, um por trecho — escolher o primeiro seria escolher um quarteirão por sorteio.",
+        produz:["cep","logradouro","bairro","municipio","uf","ibge"] })
+  ]
 },
 {
   id:"nominatim", nome:"Nominatim — geocodificação (OSM)", org:"OpenStreetMap", dom:"territorio", acesso:"live",
@@ -3127,7 +3187,23 @@ const FONTES = [
   cobertura:"Global",
   auditoria:"HTTP 200, CORS liberado. Política de uso exige no máximo 1 requisição por segundo e User-Agent identificável — não use para geocodificação em lote.",
   doc:"https://nominatim.org/release-docs/latest/api/Search/",
-  chave:["geocodificacao","latitude","longitude","coordenada","mapa"]
+  chave:["geocodificacao","latitude","longitude","coordenada","mapa","endereco","cep","rua","lugar","geolocalizacao"],
+  rotas:[
+    R({ id:"texto", nome:"Por texto livre", quando:"você tem o nome do lugar ou o endereço escrito de qualquer jeito", devolve:"lista",
+        base:"https://nominatim.openstreetmap.org/search?q=Fortaleza&format=json&limit=5&addressdetails=1&countrycodes=br",
+        params:[P("q","Fortaleza",true,"texto livre"),P("limit","5",false,"quantos resultados")],
+        produz:["lat","lon","cep","municipio","uf"] }),
+    R({ id:"estruturado", nome:"Por rua, cidade e estado", quando:"você tem o endereço em partes separadas", devolve:"lista",
+        base:"https://nominatim.openstreetmap.org/search?street=Avenida%20Desembargador%20Moreira&city=Fortaleza&state=CE&country=Brazil&format=json&limit=5&addressdetails=1",
+        params:[P("street","Avenida Desembargador Moreira",true,"logradouro"),P("city","Fortaleza",true,"município"),
+                P("state","CE",false,"UF"),P("limit","5",false,"quantos resultados")],
+        nota:"Com addressdetails=1 a resposta traz o CEP em address.postcode — é o caminho quando o ViaCEP não acha a rua.",
+        produz:["lat","lon","cep","municipio","uf"] }),
+    R({ id:"reversa", nome:"Por coordenadas", quando:"você tem latitude e longitude e quer saber que endereço é", devolve:"registro",
+        base:"https://nominatim.openstreetmap.org/reverse?lat=-3.7319&lon=-38.5267&format=json&addressdetails=1",
+        params:[P("lat","-3.7319",true,"latitude, ponto decimal"),P("lon","-38.5267",true,"longitude, ponto decimal")],
+        produz:["cep","logradouro","bairro","municipio","uf"] })
+  ]
 },
 
 /* ---------------- FISCAL E CONTÁBIL ---------------- */
@@ -3141,7 +3217,22 @@ const FONTES = [
   cobertura:"Brasil — 5.598 entes",
   auditoria:"HTTP 200, CORS liberado. Campos: cod_ibge, ente, capital, regiao, uf, esfera, exercicio, populacao, cnpj. ARMADILHA confirmada em 05/09/2026: este é um endpoint de tabela, e parâmetros soltos como ?uf=CE são IGNORADOS em silêncio — a chamada devolveu os 5.598 entes do Brasil, não os 184 do Ceará. O filtro só funciona na sintaxe q={\"uf\":\"CE\"}, que retornou exatamente 184.",
   doc:"https://apidatalake.tesouro.gov.br/docs/siconfi",
-  chave:["ente","municipio","populacao","cnpj","siconfi","tesouro","dimensao"]
+  chave:["ente","municipio","populacao","cnpj","siconfi","tesouro","dimensao"],
+  rotas:[
+    R({ id:"porUF", nome:"Por UF", quando:"você quer os entes de um estado", devolve:"lista",
+        base:"https://apidatalake.tesouro.gov.br/ords/siconfi/tt/entes",
+        params:[P("q",'{"uf":"CE"}',false,'filtro ORDS em JSON')],
+        produz:["cod_ibge","ente","uf","populacao","cnpj"] }),
+    R({ id:"porCodigo", nome:"Por código IBGE", quando:"você tem o código do município", devolve:"lista",
+        base:"https://apidatalake.tesouro.gov.br/ords/siconfi/tt/entes",
+        params:[P("q",'{"cod_ibge":2304400}',false,'filtro ORDS em JSON')],
+        produz:["cod_ibge","ente","uf","populacao","cnpj"] }),
+    R({ id:"porNome", nome:"Por nome do ente", quando:"você sabe o nome, mas não o código", devolve:"lista",
+        base:"https://apidatalake.tesouro.gov.br/ords/siconfi/tt/entes",
+        params:[P("q",'{"ente":"Fortaleza"}',false,'filtro ORDS em JSON — casa exato, respeitando acentos')],
+        nota:"O filtro ORDS compara texto exato. Para nome parcial, traga os entes da UF e filtre aqui dentro — o agente faz isso sem rede.",
+        produz:["cod_ibge","ente","uf","populacao","cnpj"] })
+  ]
 },
 {
   id:"siconfi-dca", nome:"DCA — Declaração de Contas Anuais", org:"Tesouro Nacional / SICONFI", dom:"fiscal", acesso:"live",
@@ -11446,15 +11537,55 @@ const RECEITAS_ARQUIVO = [
     ['ano', /^(an_exercicio|an_referencia|anopca|ano|exercicio|ano_referencia)$/],
     ['mes', /^(me_referencia|mes|mes_referencia)$/],
     ['periodo', /^(nr_periodo|periodo|bimestre|trimestre|quadrimestre|semestre)$/],
-    ['ente', /^(id_ente|localidade|cod_ibge|codigo_ibge|cod_municipio|municipio|n6|ibge)$/],
-    ['uf', /^(uf|sigla_uf|sigla|n3)$/],
+    /* `ente` é o CÓDIGO; `cidade` é o NOME. São papéis diferentes porque há
+       rota que recebe um e rota que recebe o outro, e trocá-los devolve
+       "município não encontrado" com cara de fonte fora do ar. */
+    ['ente', /^(id_ente|localidade|cod_ibge|codigo_ibge|cod_municipio|n6|ibge)$/],
+    ['cidade', /^(cidade|city|municipio|nome_municipio|ente)$/],
+    ['uf', /^(uf|sigla_uf|sigla|state|n3)$/],
+    ['logradouro', /^(logradouro|street|rua|endereco|via)$/],
+    ['ddd', /^ddd$/],
+    ['lat', /^(lat|latitude)$/],
+    ['lon', /^(lon|lng|long|longitude)$/],
     ['dataIni', /^(datainicial|data_inicial|dt_inicio|dataini|inicio)$/],
     ['dataFim', /^(datafinal|data_final|dt_fim|datafim|fim)$/],
     ['cnpj', /cnpj/],
     ['cep', /^cep$/],
+    ['texto', /^(q|busca|search|termo)$/],
     ['pagina', /^(pagina|page|offset)$/]
   ];
   const norm = (s) => AG.norm(s);
+  const escapaRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  /* Nomes de UF que, sem acento, são palavra comum do português. A lista é
+     curta de propósito: cada entrada aqui custa um falso negativo para quem
+     digita sem acento, e só entra quando o falso POSITIVO seria pior. */
+  const NOME_AMBIGUO = { para: true };   /* Pará × a preposição "para" */
+
+  /** A palavra é vocabulário do próprio agente (forma de gráfico ou intenção)?
+      Municípios brasileiros incluem Barras, Panorama, Linha Nova e Colunas —
+      e quando a palavra já significa outra coisa aqui dentro, ela significa
+      essa outra coisa. */
+  function vocabDoAgente(palavra, frase) {
+    if (!AG.nlu) return false;
+    const alvo = ' ' + palavra + ' ';
+    const listas = [AG.nlu.CHART_RULES || [], AG.nlu.INTENT_RULES || []];
+    for (const l of listas) {
+      for (const r of l) {
+        if (!r.re) continue;
+        /* A palavra sozinha é uma regra ("panorama")… */
+        if (r.re.test(alvo)) return true;
+        /* …ou faz parte do trecho que a regra casou na frase ("barras" dentro
+           de "barras empilhadas"). O segundo caso é o comum: o vocabulário de
+           gráfico quase sempre tem duas palavras. */
+        if (!frase) continue;
+        const re = new RegExp(r.re.source, r.re.flags.replace('g', ''));
+        const m = re.exec(frase);
+        if (m && m[0].indexOf(palavra) >= 0) return true;
+      }
+    }
+    return false;
+  }
   function papelDe(nome) {
     const n = String(nome).toLowerCase().replace(/[\s-]/g, '_');
     for (const [p, re] of PAPEIS) if (re.test(n)) return p;
@@ -11485,11 +11616,64 @@ const RECEITAS_ARQUIVO = [
   const PISTA_ENTE = /\b(municipio|municipios|prefeitura|cidade|ente|capital|comarca|do municipio)\b/;
   const PREP = /\b(de|do|da|em|no|na|para|pra)\s+$/;
 
+  /* Tipos de logradouro, para reconhecer "Avenida Desembargador Moreira" como
+     endereço e não como três palavras soltas. */
+  const VIAS = ['rua', 'avenida', 'av', 'travessa', 'tv', 'praca', 'pra[cç]a', 'alameda', 'al',
+    'rodovia', 'estrada', 'via', 'largo', 'beco', 'passeio', 'ladeira', 'parque', 'conjunto',
+    'quadra', 'viela', 'servidao', 'servid[aã]o'];
+
   function entidades(pergunta, opts) {
     const o = opts || {};
     const txt = String(pergunta || '');
     const n = norm(txt);
-    const out = { ano: null, mes: null, periodo: null, uf: null, municipios: [], datas: null, bruto: {} };
+    const out = {
+      ano: null, mes: null, periodo: null, uf: null, municipios: [], datas: null,
+      logradouro: null, ddd: null, coords: null, cep: null, cnpj: null, bruto: {}
+    };
+
+    /* ---- logradouro ----
+       Extraído ANTES do município, e o trecho sai do texto usado na busca de
+       municípios. "Avenida Santos Dumont em Fortaleza" tem Santos Dumont, que
+       é município de Minas Gerais: sem essa ordem, o agente consultaria o ente
+       errado com toda a aparência de acerto. */
+    let textoSemVia = txt;
+    /* O corte NÃO inclui "de/do/da": eles são parte do nome muito mais vezes
+       do que separador — "Barão de Studart", "Dom Luís", "13 de Maio". Quem
+       escreve a cidade depois do logradouro usa "em" ou vírgula. */
+    const mVia = new RegExp(
+      '\\b(' + VIAS.join('|') + ')\\.?\\s+([^,;]+?)' +
+      '(?=\\s+(?:em|no|na|bairro|cep|cidade|munic[ií]pio)\\b|[,;]|$)', 'i').exec(txt);
+    if (mVia) {
+      const nome = mVia[2].trim();
+      if (nome.length >= 3) {
+        out.logradouro = (mVia[1] + ' ' + nome).replace(/\s+/g, ' ').trim();
+        out.bruto.via = mVia[1];
+        textoSemVia = txt.slice(0, mVia.index) + ' ' + txt.slice(mVia.index + mVia[0].length);
+      }
+    }
+
+    /* ---- CEP e CNPJ: quem valida dígito é o módulo 76, e ter dois detectores
+       para o mesmo número é ter dois que discordam. Aqui só se aproveita o
+       resultado, para que a rota "por CEP" seja escolhível como qualquer outra. */
+    if (AG.consulta) {
+      for (const d of AG.consulta.detectar(txt)) {
+        if (!d.valido) continue;
+        if (d.tipo === 'cep' && !out.cep) out.cep = d.valor;
+        if (d.tipo === 'cnpj' && !out.cnpj) out.cnpj = d.valor;
+      }
+    }
+
+    /* ---- DDD: "ddd 85" ou "(85)" ---- */
+    const mDDD = /\bddd\s*(\d{2})\b/i.exec(txt) || /\((\d{2})\)/.exec(txt);
+    if (mDDD && Number(mDDD[1]) >= 11 && Number(mDDD[1]) <= 99) out.ddd = mDDD[1];
+
+    /* ---- coordenadas: "-3.7319, -38.5267" ---- */
+    const mCo = /(-?\d{1,2}[.,]\d{3,})\s*[,;]\s*(-?\d{1,3}[.,]\d{3,})/.exec(txt);
+    if (mCo) {
+      const lat = Number(String(mCo[1]).replace(',', '.'));
+      const lon = Number(String(mCo[2]).replace(',', '.'));
+      if (lat >= -35 && lat <= 6 && lon >= -75 && lon <= -33) out.coords = { lat: lat, lon: lon };
+    }
 
     /* ---- ano: 1990–2099, e só quando a frase trata como ano ---- */
     const mAno = /(?:^|[^\d])((?:19|20)\d{2})(?![\d])/g;
@@ -11529,25 +11713,57 @@ const RECEITAS_ARQUIVO = [
     if (dts.length >= 2) out.datas = { ini: dts[0], fim: dts[1] };
     else if (dts.length === 1) out.datas = { ini: dts[0], fim: dts[0] };
 
-    /* ---- UF: sigla isolada ou nome do estado ---- */
+    /* ---- UF ----
+       Duas armadilhas do português, e as duas custaram caro:
+
+       1. "Pará" normalizado é "para" — a preposição mais comum da língua.
+          Casar pelo nome sem acento marcava UF=PA em quase toda frase.
+       2. As siglas em minúscula são palavras: "se", "to", "no", "da", "pa".
+          Casar `\bse\b` no texto normalizado faz "não sei se o CEP" virar
+          uma consulta a Sergipe.
+
+       Por isso a sigla é procurada em MAIÚSCULA no texto original — que é
+       como se escreve UF — e o nome só vale com a acentuação que ele tem. */
     if (M()) {
-      for (const u of M().todasUF()) {
-        if (new RegExp('\\b' + norm(u.nome) + '\\b').test(n) ||
-            new RegExp('\\b' + u.sigla.toLowerCase() + '\\b').test(n)) {
-          out.uf = u; break;
+      /* Tokens do texto ORIGINAL, preservando acento. `\b` do JavaScript não
+         funciona depois de "á": /\bPará\b/ nunca casa com "Pará". */
+      const tokens = (txt.match(/[\p{L}\p{N}]+/gu) || []);
+      const comAcento = tokens.join(' ');
+      const temFrase = (alvo) => {
+        const a = alvo.match(/[\p{L}\p{N}]+/gu) || [];
+        for (let i = 0; i + a.length <= tokens.length; i++) {
+          let bate = true;
+          for (let k = 0; k < a.length; k++) if (tokens[i + k] !== a[k]) { bate = false; break; }
+          if (bate) return true;
         }
+        return false;
+      };
+      for (const u of M().todasUF()) {
+        const porSigla = new RegExp('\\b' + u.sigla + '\\b').test(txt) ||
+          new RegExp('\\buf\\s+' + u.sigla.toLowerCase() + '\\b').test(n);
+        /* "Pará" sem acento é "para", a preposição. Nesse caso — e só nele —
+           exige-se o acento escrito ou a palavra "estado" por perto. */
+        const ambiguo = NOME_AMBIGUO[norm(u.nome)];
+        const porNome = ambiguo
+          ? (temFrase(u.nome) || new RegExp('estado d[oae]\\s+' + norm(u.nome) + '\\b').test(n))
+          : new RegExp('\\b' + escapaRe(norm(u.nome)) + '\\b').test(n);
+        if (porSigla || porNome) { out.uf = u; break; }
       }
+      void comAcento;
     }
 
     /* ---- município: n-gramas de 1 a 5 palavras contra o índice ----
        Da direita para a esquerda e do maior para o menor, para "São José
        dos Campos" não virar "São José". */
     if (M()) {
-      const palavras = n.split(' ').filter(Boolean);
+      /* Sobre o texto SEM o logradouro, pelo motivo dito acima. */
+      const nBusca = norm(textoSemVia);
+      const palavras = nBusca.split(' ').filter(Boolean);
       /* Numa continuação ("e Sobral?") o contexto já estabeleceu que se está
          falando de entes — exigir a preposição ali seria pedir que a pessoa
-         repita o que acabou de dizer. */
-      const temPista = PISTA_ENTE.test(n) || !!o.contextoEnte;
+         repita o que acabou de dizer. Com um logradouro na frase, o mesmo:
+         "Avenida X em Fortaleza" fala de cidade sem precisar dizer "município". */
+      const temPista = PISTA_ENTE.test(nBusca) || !!o.contextoEnte || !!out.logradouro;
       const usados = new Array(palavras.length).fill(false);
       for (let tam = 5; tam >= 1; tam--) {
         for (let i = 0; i + tam <= palavras.length; i++) {
@@ -11561,6 +11777,12 @@ const RECEITAS_ARQUIVO = [
             const antes = palavras.slice(0, i).join(' ') + ' ';
             if (!temPista && !PREP.test(antes)) continue;
             if (termo.length < 4) continue;
+            /* O vocabulário do agente tem precedência sobre o dos municípios.
+               "Barras" é município do Piauí, e "gráfico de barras empilhadas"
+               virava uma consulta ao PNCP; "Panorama" é município de São Paulo.
+               Não é lista nova: a palavra é testada contra as próprias regras
+               de gráfico e de intenção do NLU. */
+            if (vocabDoAgente(termo, nBusca)) continue;
           }
           for (let k = i; k < i + tam; k++) usados[k] = true;
           out.municipios.push({ termo: termo, opcoes: achados });
@@ -11623,8 +11845,26 @@ const RECEITAS_ARQUIVO = [
    * @param contexto   {fonteId, valores} da última consulta, ou null
    * @returns {valores, campos:[{n,valor,papel,origem,hint,req,opcoes}], ambiguidades:[]}
    */
-  function montar(fonte, ent, contexto) {
-    const herda = contexto && contexto.fonteId === fonte.id ? (contexto.valores || {}) : {};
+  /* As rotas de uma fonte. Sem rotas declaradas, a própria fonte é a rota —
+     assim todo o resto do código trabalha com um conceito só. */
+  function rotasDe(f) {
+    if (f.rotas && f.rotas.length) return f.rotas;
+    return [{ id: 'padrao', nome: f.nome, quando: '', base: f.base, params: f.params || [], devolve: 'lista', nota: '', produz: [] }];
+  }
+
+  /**
+   * @param fonte      entrada do catálogo
+   * @param ent        saída de entidades()
+   * @param contexto   {fonteId, rotaId, valores} da última consulta, ou null
+   * @param rota       rota escolhida; omitida, usa a primeira
+   * @returns {valores, campos:[{n,valor,papel,origem,hint,req}], ambiguidades:[], rota}
+   */
+  function montar(fonte, ent, contexto, rota) {
+    const r = rota || rotasDe(fonte)[0];
+    /* Só herda do contexto quando é a MESMA rota: os valores de "por CEP" não
+       têm o que fazer nos campos de "por endereço". */
+    const herda = contexto && contexto.fonteId === fonte.id &&
+      (!contexto.rotaId || contexto.rotaId === r.id) ? (contexto.valores || {}) : {};
     const valores = {};
     const campos = [];
     const ambiguidades = [];
@@ -11644,12 +11884,25 @@ const RECEITAS_ARQUIVO = [
       mes: ent.mes === null ? null : String(ent.mes).padStart(2, '0'),
       periodo: ent.periodo ? String(ent.periodo.n) : null,
       ente: municipio ? municipio.codigo : null,
-      uf: ent.uf ? ent.uf.sigla : null,
+      cidade: municipio ? municipio.nome : null,
+      uf: ent.uf ? ent.uf.sigla : (municipio ? municipio.uf : null),
+      logradouro: ent.logradouro || null,
+      ddd: ent.ddd || null,
+      lat: ent.coords ? String(ent.coords.lat) : null,
+      lon: ent.coords ? String(ent.coords.lon) : null,
+      cep: ent.cep || null,
+      cnpj: ent.cnpj || null,
       dataIni: ent.datas ? ent.datas.ini : null,
       dataFim: ent.datas ? ent.datas.fim : null
     };
+    /* Texto livre: só quando a frase traz endereço, porque é para isso que a
+       rota de busca livre serve. Mandar a pergunta inteira como `q` faria o
+       Nominatim procurar "qual o cep da" pelo mundo. */
+    daFrase.texto = ent.logradouro
+      ? (ent.logradouro + (municipio ? ', ' + municipio.nome + ' - ' + municipio.uf : ''))
+      : null;
 
-    for (const p of (fonte.params || [])) {
+    for (const p of (r.params || [])) {
       const papel = papelDe(p.n);
       const obj = jsonDe(p.v);
       let valor, origem;
@@ -11670,7 +11923,7 @@ const RECEITAS_ARQUIVO = [
       } else {
         const v = papel ? daFrase[papel] : null;
         if (v !== null && v !== undefined) { valor = v; origem = 'frase'; }
-        else if (papel === 'ente' && ambiguidades.length) {
+        else if ((papel === 'ente' || papel === 'cidade') && ambiguidades.length) {
           /* A frase nomeou um município e existem vários com esse nome.
              Deixar o exemplo do catálogo de pé faria a consulta sair para
              Fortaleza enquanto a tela pergunta qual "Bonito" era. */
@@ -11686,7 +11939,7 @@ const RECEITAS_ARQUIVO = [
         rotOrigem: ORIGEM[origem], hint: p.hint || '', req: !!p.req
       });
     }
-    return { valores: valores, campos: campos, ambiguidades: ambiguidades };
+    return { valores: valores, campos: campos, ambiguidades: ambiguidades, rota: r };
   }
 
   /**
@@ -11724,17 +11977,39 @@ const RECEITAS_ARQUIVO = [
        trouxe. "municípios do Ceará" casa com a lista completa do IBGE e com a
        do BrasilAPI por UF; só a segunda tem onde pôr "Ceará", e devolver a
        lista do Brasil inteiro para quem pediu um estado é a resposta errada
-       com aparência de sucesso. */
-    const avaliadas = cands.slice(0, 8).map((f, i) => {
-      const m = montar(f, ent, contexto);
-      return { fonte: f, m: m, ordem: i, daFrase: m.campos.filter((c) => c.origem === 'frase').length };
+       com aparência de sucesso.
+
+       A mesma regra vale DENTRO da fonte, entre as rotas: quem sabe a rua e a
+       cidade mas não o CEP tem de cair na busca por endereço do ViaCEP, não na
+       busca por CEP com o exemplo do catálogo preenchido. A pergunta que o
+       agente responde aqui não é "qual endpoint", é "o que você tem em mãos". */
+    const avaliadas = [];
+    cands.slice(0, 8).forEach((f, i) => {
+      rotasDe(f).forEach((r, j) => {
+        const m = montar(f, ent, contexto, r);
+        const req = (r.params || []).filter((p) => p.req);
+        const reqCheios = req.filter((p) => {
+          const c = m.campos.find((x) => x.n === p.n);
+          return c && c.origem === 'frase';
+        }).length;
+        avaliadas.push({
+          fonte: f, rota: r, m: m, ordem: i * 100 + j,
+          daFrase: m.campos.filter((c) => c.origem === 'frase').length,
+          /* Rota cujos obrigatórios a frase preenche vence a que só casa em
+             campo opcional: preencher `limit` não é ter o que buscar. */
+          cobre: req.length ? reqCheios / req.length : 0
+        });
+      });
     });
-    avaliadas.sort((a, b) => b.daFrase - a.daFrase || a.ordem - b.ordem);
+    avaliadas.sort((a, b) => b.cobre - a.cobre || b.daFrase - a.daFrase || a.ordem - b.ordem);
     const esc = avaliadas[0];
     if (!vale(esc.daFrase, opts)) return null;
+    const outras = avaliadas.filter((x) => x.fonte !== esc.fonte);
     return {
-      fonte: esc.fonte, entidades: ent,
-      alternativas: avaliadas.filter((x) => x !== esc).slice(0, 3).map((x) => x.fonte),
+      fonte: esc.fonte, rota: esc.rota, entidades: ent,
+      rotas: rotasDe(esc.fonte),
+      alternativas: outras.filter((x, i, a) => a.findIndex((y) => y.fonte === x.fonte) === i)
+        .slice(0, 3).map((x) => x.fonte),
       valores: esc.m.valores, campos: esc.m.campos, ambiguidades: esc.m.ambiguidades,
       daFrase: esc.daFrase
     };
@@ -11762,17 +12037,22 @@ const RECEITAS_ARQUIVO = [
        ele também herda do contexto, e sabe conferir se o recorte pedido já
        está numa base carregada, coisa que aqui não se vê. */
     if (candidatas(pergunta).length) return null;
-    const pedeEnte = (fonte.params || []).some((p) => papelDe(p.n) === 'ente' || jsonDe(p.v));
+    const rota = rotasDe(fonte).find((r) => r.id === contexto.rotaId) || rotasDe(fonte)[0];
+    const pedeEnte = (rota.params || []).some((p) => {
+      const pp = papelDe(p.n);
+      return pp === 'ente' || pp === 'cidade' || jsonDe(p.v);
+    });
     const ent = entidades(pergunta, { contextoEnte: pedeEnte });
     const temAlgo = ent.ano !== null || ent.mes !== null || ent.periodo ||
-      ent.municipios.length || ent.uf || ent.datas;
+      ent.municipios.length || ent.uf || ent.datas || ent.logradouro || ent.ddd || ent.coords;
     if (!temAlgo) return null;
-    const m = montar(fonte, ent, contexto);
+    const m = montar(fonte, ent, contexto, rota);
     /* Só é continuação se algo mudou de fato em relação ao contexto. */
     const mudou = m.campos.some((c) => c.origem === 'frase' && String(c.valor) !== String((contexto.valores || {})[c.n]));
     if (!mudou) return null;
     return {
-      fonte: fonte, alternativas: [], entidades: ent, continuacao: true,
+      fonte: fonte, rota: rota, rotas: rotasDe(fonte),
+      alternativas: [], entidades: ent, continuacao: true,
       valores: m.valores, campos: m.campos, ambiguidades: m.ambiguidades,
       daFrase: m.campos.filter((c) => c.origem === 'frase').length
     };
@@ -11789,8 +12069,50 @@ const RECEITAS_ARQUIVO = [
     return continuar(pergunta, contexto) || resolver(pergunta, contexto, opts);
   }
 
+  /* Verbo de pedido explícito. É o que separa "quero os dados dessa empresa"
+     (uma busca sem o identificador) de "total de contratos por modalidade"
+     (uma pergunta sobre a base carregada). Sem esta exigência, a tela de busca
+     apareceria em toda pergunta analítica — o mesmo falso positivo de antes,
+     numa roupa nova. */
+  const VERBO_BUSCA = new RegExp('\\b(' + [
+    'consultar?', 'consulte', 'buscar?', 'busque', 'procurar?', 'procure',
+    'pesquisar?', 'pesquise', 'traga', 'trazer', 'me tr[ao]z', 'quero',
+    'preciso', 'gostaria', 'como (consulto|busco|acho|encontro|pesquiso)',
+    'onde (acho|encontro|consulto)', 'dados d[aeo]s?', 'informac(ao|oes) d[aeo]s?',
+    'ficha d[aeo]s?', 'cadastro d[aeo]s?', 'por quais? (campos?|parametros?)',
+    'd[aá] para buscar', 'como faco para'
+  ].join('|') + ')\\b');
+
+  /**
+   * A frase pede uma consulta mas não traz entrada nenhuma: em vez do beco sem
+   * saída, as formas de buscar daquela fonte, com os campos em branco.
+   * Devolve null quando não é esse caso — que continua sendo a maioria.
+   */
+  function buscaVazia(pergunta, opts) {
+    const n = norm(pergunta);
+    if (!VERBO_BUSCA.test(n)) return null;
+    const cands = candidatas(pergunta);
+    if (!cands.length) return null;
+    const ent = entidades(pergunta);
+    /* Se a frase traz entrada, quem responde é o resolvedor. */
+    const temAlgo = ent.ano !== null || ent.mes !== null || ent.periodo || ent.municipios.length ||
+      ent.uf || ent.datas || ent.logradouro || ent.ddd || ent.coords || ent.cep || ent.cnpj;
+    if (temAlgo) return null;
+    void opts;
+    return {
+      entidades: ent,
+      fontes: cands.slice(0, 4).map((f) => ({
+        fonte: f,
+        rotas: rotasDe(f).map((r) => ({
+          rota: r,
+          campos: montar(f, ent, null, r).campos
+        }))
+      }))
+    };
+  }
+
   AG.pedidoFonte = {
-    entidades, candidatas, montar, resolver, continuar, paraPergunta,
+    entidades, candidatas, montar, resolver, continuar, paraPergunta, rotasDe, buscaVazia,
     vale, papelDe, jsonDe, ORIGEM
   };
 })();
@@ -12610,6 +12932,15 @@ const RECEITAS_ARQUIVO = [
         }
         if (div && div.length) ofertaPendente = { ped: ped, div: div, ds: mesma[0] };
         /* sem divergência, o recorte já está na tela: segue o fluxo normal */
+      } else {
+        /* A frase pede uma consulta e não traz valor nenhum: em vez do beco
+           sem saída, as formas de entrada daquela fonte, em branco. */
+        const busca = AG.pedidoFonte.buscaVazia(question, { temBase: !!APP.datasets.length });
+        if (busca) {
+          APP.ultimoPlano = { question: question, intent: 'busca', dimensions: [], filters: [], notes: [] };
+          AG.pedidoUI.renderBusca(body, busca, question);
+          return;
+        }
       }
     }
 
@@ -19102,6 +19433,13 @@ const RECEITAS_ARQUIVO = [
         });
       }
 
+      /* O que voltou pode ser a entrada da próxima consulta: achou o CEP pela
+         rua, esse CEP serve a outra fonte. Oferecido mesmo quando só se testou,
+         porque testar já entregou o valor. */
+      if (linhas && linhas.length && cfg.encadear && AG.pedidoUI) {
+        try { AG.pedidoUI.ofereceEncadear(out, linhas, cfg.encadear); } catch (e) { void e; }
+      }
+
       if (!linhas || !linhas.length) return;
       if (!cfg.ingerir) return;
 
@@ -21710,17 +22048,54 @@ const RECEITAS_ARQUIVO = [
     const o = opts || {};
     const f = pedido.fonte;
     const valores = Object.assign({}, pedido.valores);
+    /* A rota carrega a própria `base` e os próprios `params`: passá-la no
+       lugar da fonte faz montarURL montar a chamada certa sem saber de rotas. */
+    const alvo = pedido.rota && pedido.rota.base ? pedido.rota : f;
     const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
 
     cx.appendChild(el('h3', { class: 'sec-tit', text: o.titulo || f.nome }));
     if (o.nota) cx.appendChild(el('div', { class: 'subline', html: o.nota }));
+
+    /* ---- por onde buscar ----
+       A pergunta não é "qual endpoint", é "o que você tem em mãos". Quem não
+       sabe o CEP tem de ver, sem procurar, que dá para chegar pela rua e pela
+       cidade. Trocar de rota reconstrói o cartão: os campos são outros. */
+    const rotas = pedido.rotas || [];
+    if (rotas.length > 1) {
+      cx.appendChild(el('div', { class: 'subline', text: 'Por onde você quer buscar:' }));
+      const linha = el('div', { class: 'btn-row', style: { flexWrap: 'wrap', marginBottom: '4px' } });
+      for (const r of rotas) {
+        const atual = r.id === (pedido.rota || {}).id;
+        const b = el('button', {
+          class: 'btn sm' + (atual ? ' primary' : ''),
+          text: r.nome, title: r.quando || r.nome
+        });
+        if (!atual) {
+          b.addEventListener('click', () => {
+            const m = PF().montar(f, pedido.entidades, AG.ultimaConsulta, r);
+            const corpo = el('div');
+            cartaoPedido(corpo, {
+              fonte: f, rota: r, rotas: rotas, entidades: pedido.entidades,
+              alternativas: pedido.alternativas,
+              valores: m.valores, campos: m.campos, ambiguidades: m.ambiguidades
+            }, question, o);
+            cx.parentNode.replaceChild(corpo, cx);
+          });
+        }
+        linha.appendChild(b);
+      }
+      cx.appendChild(linha);
+      const r = pedido.rota || {};
+      if (r.quando) cx.appendChild(el('div', { class: 'hint', text: '↳ ' + r.quando + '.' }));
+      if (r.nota) cx.appendChild(el('div', { class: 'hint', text: r.nota }));
+    }
 
     const urlBox = el('code', { class: 'url-montada' });
     const saida = el('div', { style: { marginTop: '10px' } });
     let btn = null;
     const pendentes = () => pedido.campos.filter((c) => c.origem === 'pendente' && !valores[c.n]).length;
     const atualiza = () => {
-      urlBox.textContent = AG.fontesUI.montarURL(f, valores);
+      urlBox.textContent = AG.fontesUI.montarURL(alvo, valores);
       if (btn) {
         const p = pendentes();
         btn.disabled = p > 0;
@@ -21788,18 +22163,27 @@ const RECEITAS_ARQUIVO = [
     const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px', flexWrap: 'wrap' } });
     btn = el('button', { class: 'btn sm primary', text: 'Consultar e trazer' });
     btn.addEventListener('click', () => {
-      AG.ultimaConsulta = { fonteId: f.id, valores: Object.assign({}, valores), quando: Date.now() };
-      AG.fontesUI.chamarAvulso(f, AG.fontesUI.montarURL(f, valores), saida, btn, {
-        ingerir: true, nome: nomeDaBase(f, valores),
-        marca: { fonteId: f.id, valores: Object.assign({}, valores) }
+      AG.ultimaConsulta = {
+        fonteId: f.id, rotaId: (pedido.rota || {}).id,
+        valores: Object.assign({}, valores), quando: Date.now()
+      };
+      AG.fontesUI.chamarAvulso(f, AG.fontesUI.montarURL(alvo, valores), saida, btn, {
+        ingerir: true, nome: nomeDaBase(f, valores, pedido.rota),
+        marca: { fonteId: f.id, rotaId: (pedido.rota || {}).id, valores: Object.assign({}, valores) },
+        encadear: { fonte: f, rota: pedido.rota, saida: saida, question: question }
       });
     });
     acoes.appendChild(btn);
 
     const btnT = el('button', { class: 'btn sm', text: 'Só testar' });
     btnT.addEventListener('click', () => {
-      AG.ultimaConsulta = { fonteId: f.id, valores: Object.assign({}, valores), quando: Date.now() };
-      AG.fontesUI.chamarAvulso(f, AG.fontesUI.montarURL(f, valores), saida, btnT, { ingerir: false });
+      AG.ultimaConsulta = {
+        fonteId: f.id, rotaId: (pedido.rota || {}).id,
+        valores: Object.assign({}, valores), quando: Date.now()
+      };
+      AG.fontesUI.chamarAvulso(f, AG.fontesUI.montarURL(alvo, valores), saida, btnT, {
+        ingerir: false, encadear: { fonte: f, rota: pedido.rota, saida: saida, question: question }
+      });
     });
     acoes.appendChild(btnT);
     acoes.appendChild(el('button', {
@@ -21834,10 +22218,11 @@ const RECEITAS_ARQUIVO = [
     return cx;
   }
 
-  function nomeDaBase(f, valores) {
-    const curto = f.nome.split(' — ')[0];
+  function nomeDaBase(f, valores, rota) {
+    const curto = f.nome.split(' — ')[0] +
+      (rota && rota.id && rota.id !== 'padrao' && (f.rotas || []).length > 1 ? ' · ' + rota.nome : '');
     const partes = [];
-    for (const p of (f.params || [])) {
+    for (const p of ((rota && rota.params) || f.params || [])) {
       const papel = PF().papelDe(p.n);
       const v = valores[p.n];
       if (!v) continue;
@@ -21875,7 +22260,195 @@ const RECEITAS_ARQUIVO = [
     }
   }
 
-  AG.pedidoUI = { render, cartaoPedido, nomeDaBase };
+  /* =========================================================
+     ENCADEAR: O QUE VOLTOU VIRA A ENTRADA DA PRÓXIMA CONSULTA
+
+     Achou o CEP pela rua? Esse CEP serve ao ViaCEP por CEP, ao BrasilAPI com
+     coordenadas, e a qualquer rota que peça CEP. Copiar e colar entre telas é
+     onde o dado se perde e onde entra o dígito trocado.
+
+     Cada passo continua sendo um clique seu — encadear sozinho até o fim faria
+     um erro do primeiro passo chegar mascarado no último.
+     ========================================================= */
+
+  /** O que a resposta oferece como entrada de uma próxima consulta. */
+  function valoresUteis(linhas) {
+    if (!linhas || !linhas.length) return [];
+    const achar = (re) => {
+      for (const L of linhas.slice(0, 40)) {
+        const p = AG.respostaAPI.achatar(L);
+        for (const k in p) {
+          if (!re.test(String(k).toLowerCase())) continue;
+          const v = p[k];
+          if (v === null || v === undefined || v === '') continue;
+          return { chave: k, valor: String(v) };
+        }
+      }
+      return null;
+    };
+    const out = [];
+    const cep = achar(/(^|\.)(cep|postcode|codigo_postal)$/);
+    if (cep && /^\d{5}-?\d{3}$/.test(cep.valor.trim())) {
+      out.push({ papel: 'cep', rot: 'CEP', valor: cep.valor.replace(/\D/g, ''), de: cep.chave });
+    }
+    const ibge = achar(/(^|\.)(ibge|cod_ibge|codigo_ibge|id_ente|codigo_municipio_ibge)$/);
+    if (ibge && /^\d{7}$/.test(ibge.valor.replace(/\D/g, ''))) {
+      const m = AG.municipios.porCodigo(ibge.valor);
+      out.push({
+        papel: 'ente', rot: 'Município', valor: ibge.valor.replace(/\D/g, ''),
+        de: ibge.chave, rotulo: m ? m.nome + '/' + m.uf : ibge.valor
+      });
+    }
+    const cnpj = achar(/(^|\.)cnpj$/);
+    if (cnpj && /^\d{14}$/.test(cnpj.valor.replace(/\D/g, ''))) {
+      out.push({ papel: 'cnpj', rot: 'CNPJ', valor: cnpj.valor.replace(/\D/g, ''), de: cnpj.chave });
+    }
+    const lat = achar(/(^|\.)(lat|latitude)$/), lon = achar(/(^|\.)(lon|lng|longitude)$/);
+    if (lat && lon) out.push({ papel: 'coords', rot: 'Coordenadas', valor: lat.valor + ', ' + lon.valor, de: 'lat/lon' });
+    return out;
+  }
+
+  /** Rotas do catálogo que aceitam este papel como entrada. */
+  function rotasQueAceitam(papel) {
+    const out = [];
+    for (const f of AG.fontes.FONTES) {
+      if (f.acesso !== 'live') continue;
+      for (const r of PF().rotasDe(f)) {
+        const casa = (r.params || []).some((p) => {
+          const pp = PF().papelDe(p.n);
+          return papel === 'coords' ? (pp === 'lat' || pp === 'lon') : pp === papel;
+        });
+        if (casa) out.push({ fonte: f, rota: r });
+      }
+    }
+    return out;
+  }
+
+  /** A faixa de encadeamento, abaixo do resultado de uma consulta. */
+  function ofereceEncadear(out, linhas, origem) {
+    const uteis = valoresUteis(linhas);
+    if (!uteis.length) return;
+    const destinos = [];
+    for (const u of uteis) {
+      for (const d of rotasQueAceitam(u.papel)) {
+        /* Não oferecer voltar exatamente para a consulta que acabou de rodar. */
+        if (origem && d.fonte.id === origem.fonte.id && d.rota.id === (origem.rota || {}).id) continue;
+        destinos.push({ u: u, fonte: d.fonte, rota: d.rota });
+      }
+    }
+    if (!destinos.length) return;
+
+    const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
+    cx.appendChild(el('h3', { class: 'sec-tit', text: 'Usar este resultado em outra consulta' }));
+    cx.appendChild(el('div', {
+      class: 'subline',
+      html: 'A resposta trouxe ' +
+        uteis.map((u) => '<b>' + AG.esc(u.rot) + ' ' + AG.esc(u.rotulo || u.valor) + '</b>').join(' e ') +
+        '. Dá para levar direto para outra fonte, sem copiar e colar — cada passo continua sendo um clique seu.'
+    }));
+    const linha = el('div', { class: 'btn-row', style: { flexWrap: 'wrap', marginTop: '6px' } });
+    const vistos = {};
+    for (const d of destinos.slice(0, 8)) {
+      const chave = d.fonte.id + '|' + d.rota.id;
+      if (vistos[chave]) continue;
+      vistos[chave] = 1;
+      const rot = d.fonte.nome.split(' — ')[0] +
+        ((d.fonte.rotas || []).length > 1 ? ' · ' + d.rota.nome : '');
+      const b = el('button', { class: 'btn sm', text: rot, title: d.rota.quando || d.rota.nome });
+      b.addEventListener('click', () => {
+        const ent = PF().entidades('');
+        if (d.u.papel === 'cep') ent.cep = d.u.valor;
+        else if (d.u.papel === 'cnpj') ent.cnpj = d.u.valor;
+        else if (d.u.papel === 'coords') {
+          const [la, lo] = d.u.valor.split(',').map((x) => Number(x.trim()));
+          ent.coords = { lat: la, lon: lo };
+        } else if (d.u.papel === 'ente') {
+          const m = AG.municipios.porCodigo(d.u.valor);
+          if (m) ent.municipios = [{ termo: m.nome, opcoes: [m] }];
+        }
+        const m = PF().montar(d.fonte, ent, null, d.rota);
+        const corpo = el('div');
+        corpo.appendChild(U().insightNode(ins('good', '→',
+          '<b>' + AG.esc(d.u.rot) + ' ' + AG.esc(d.u.rotulo || d.u.valor) + '</b> veio do resultado acima ' +
+          '(campo <code>' + AG.esc(d.u.de) + '</code>) e já está preenchido abaixo.')));
+        cartaoPedido(corpo, {
+          fonte: d.fonte, rota: d.rota, rotas: PF().rotasDe(d.fonte), entidades: ent, alternativas: [],
+          valores: m.valores, campos: m.campos, ambiguidades: m.ambiguidades
+        }, '', { titulo: d.fonte.nome });
+        cx.appendChild(corpo);
+        linha.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+      });
+      linha.appendChild(b);
+    }
+    cx.appendChild(linha);
+    out.appendChild(cx);
+  }
+
+  /* =========================================================
+     A TELA DE BUSCA: QUANDO A FRASE NÃO TRAZ NENHUMA ENTRADA
+
+     "quero consultar um CEP" não tem CEP nenhum. A resposta honesta não é
+     "não entendi" nem "me dê o CEP" — é mostrar POR QUAIS CAMPOS dá para
+     buscar, com os campos em branco. Quem não sabe o CEP descobre ali que
+     existe caminho pela rua e pela cidade, sem ter de perguntar de novo.
+     ========================================================= */
+  function renderBusca(body, busca, question) {
+    body.appendChild(el('div', { class: 'headline', text: 'Por onde dá para buscar' }));
+    body.appendChild(el('div', {
+      class: 'subline',
+      html: 'Sua pergunta não trouxe nenhum valor para consultar. ' +
+        'Estas são as formas de entrada das fontes que respondem ao navegador — ' +
+        'preencha o que você <b>tem em mãos</b> e a chamada se monta sozinha. ' +
+        '<b>Nada foi consultado ainda.</b>'
+    }));
+
+    for (const bloco of busca.fontes) {
+      const f = bloco.fonte;
+      const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
+      cx.appendChild(el('h3', { class: 'sec-tit', text: f.nome }));
+      cx.appendChild(el('div', { class: 'fonte-desc', text: f.desc }));
+
+      const lista = el('div', { class: 'visoes-lista' });
+      for (const rr of bloco.rotas) {
+        const r = rr.rota;
+        const item = el('div', { class: 'compositor-resumo' });
+        item.appendChild(el('div', {
+          html: '<b>' + AG.esc(r.nome) + '</b>' +
+            (r.quando ? ' — ' + AG.esc(r.quando) : '') +
+            ' · pede: <code>' + (r.params || []).filter((p) => p.req).map((p) => AG.esc(p.n)).join('</code> <code>') + '</code>'
+        }));
+        const b = el('button', { class: 'btn sm', text: 'Preencher' });
+        b.addEventListener('click', () => {
+          const corpo = el('div');
+          cartaoPedido(corpo, {
+            fonte: f, rota: r, rotas: bloco.rotas.map((x) => x.rota),
+            entidades: busca.entidades, alternativas: [],
+            valores: campoValores(rr.campos), campos: rr.campos, ambiguidades: []
+          }, question, { titulo: f.nome + ' · ' + r.nome });
+          item.appendChild(corpo);
+          b.disabled = true;
+        });
+        item.appendChild(el('div', { class: 'btn-row', style: { marginTop: '6px' } }, [b]));
+        lista.appendChild(item);
+      }
+      cx.appendChild(lista);
+      body.appendChild(cx);
+    }
+
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Se nenhuma dessas formas serve, a busca do catálogo (<b>🌐 Fontes públicas</b>) tem as 82 fontes ' +
+      'com a ficha técnica de cada uma — inclusive as que só existem como download.')));
+  }
+  const campoValores = (campos) => {
+    const v = {};
+    for (const c of campos) v[c.n] = c.valor;
+    return v;
+  };
+
+  AG.pedidoUI = {
+    render, cartaoPedido, nomeDaBase, ofereceEncadear, valoresUteis,
+    rotasQueAceitam, renderBusca
+  };
 })();
 
 </script>
