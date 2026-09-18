@@ -598,6 +598,13 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
 .marca.org-herdado { background: #3a3117; color: #e8c471; border-color: #5c4c23; }
 .marca.org-padrao { background: #23262d; color: #8b93a3; border-color: #333844; }
 .marca.org-pendente { background: #3d1a1a; color: #f08b8b; border-color: #5e2828; }
+
+/* --- lista de rotas: todas descrevem para que servem, sempre --- */
+.rotas-lista { display: grid; gap: 8px; margin: 8px 0; }
+.rota-item { border: 1px solid var(--bd, #2a2f3a); border-radius: 8px; padding: 8px 10px; background: #1b1f27; }
+.rota-item.atual { border-color: #2f6b45; background: #16281d; }
+.rota-nome { display: flex; align-items: center; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.rota-item .hint { margin-top: 3px; }
 </style>
 </head>
 <body>
@@ -19895,16 +19902,34 @@ const RECEITAS_ARQUIVO = [
         '<b>Auditoria de acesso:</b> ' + AG.esc(f.auditoria))));
     }
 
+    /* ---- ROTAS: as outras formas de chegar ao mesmo dado ----
+       O ViaCEP sempre teve busca por endereço. Esta janela é onde se procura
+       uma fonte, e mostrar só a entrada principal aqui é o mesmo que a rota
+       alternativa não existir: quem não sabe o CEP não descobre o caminho.
+       Trocar a rota troca os campos e a URL, porque são chamadas diferentes. */
+    const rotas = (AG.pedidoFonte && AG.pedidoFonte.rotasDe)
+      ? AG.pedidoFonte.rotasDe(f)
+      : [{ id: 'padrao', nome: f.nome, quando: '', base: f.base, params: f.params || [], nota: '' }];
+    let rota = rotas[0];
     const valores = {};
-    for (const p of (f.params || [])) valores[p.n] = p.v;
-
     const urlBox = el('code', { class: 'url-montada' });
-    const atualiza = () => { urlBox.textContent = montarURL(f, valores); };
+    const secRotas = el('div');
+    const secParams = el('div');
+    const out = el('div', { style: { marginTop: '10px' } });
 
-    if ((f.params || []).length) {
-      body.appendChild(el('h3', { class: 'sec-tit', text: 'Parâmetros' }));
-      const grid = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '10px' } });
-      for (const p of f.params) {
+    /* A rota traz `base` e `params` próprios: passá-la no lugar da fonte faz
+       montarURL montar a chamada certa sem saber que rotas existem. */
+    const alvo = () => (rota && rota.base ? rota : f);
+    const atualiza = () => { urlBox.textContent = montarURL(alvo(), valores); };
+
+    function montaParams() {
+      secParams.innerHTML = '';
+      for (const k in valores) delete valores[k];
+      for (const p of (rota.params || [])) valores[p.n] = p.v;
+      if (!(rota.params || []).length) { atualiza(); return; }
+      secParams.appendChild(el('h3', { class: 'sec-tit', text: 'Parâmetros' }));
+      const grid = el('div', { class: 'params-grid' });
+      for (const p of rota.params) {
         const inp = el('input', { class: 'inp', value: p.v === null || p.v === undefined ? '' : String(p.v) });
         inp.addEventListener('input', () => { valores[p.n] = inp.value; atualiza(); });
         grid.appendChild(el('label', { class: 'fld' }, [
@@ -19913,45 +19938,89 @@ const RECEITAS_ARQUIVO = [
           p.hint ? el('div', { class: 'hint', text: p.hint }) : null
         ]));
       }
-      body.appendChild(grid);
+      secParams.appendChild(grid);
+      atualiza();
     }
 
+    if (rotas.length > 1) {
+      secRotas.appendChild(el('h3', { class: 'sec-tit', text: 'Por onde buscar' }));
+      secRotas.appendChild(el('div', {
+        class: 'subline',
+        text: 'Esta fonte aceita ' + rotas.length + ' formas de entrada. A pergunta não é qual endereço usar — é o que você tem em mãos.'
+      }));
+      /* TODAS as rotas mostram o seu "quando", sempre. Descrever só a rota
+         selecionada esconde justamente a informação que faz falta: quem chega
+         aqui sem o CEP precisa LER que existe caminho pela rua — não descobrir
+         isso passando o mouse por cima de um botão. */
+      const lista = el('div', { class: 'rotas-lista' });
+      const itens = [];
+      rotas.forEach((r) => {
+        const it = el('div', { class: 'rota-item' + (r === rota ? ' atual' : '') });
+        it.appendChild(el('div', { class: 'rota-nome' }, [
+          el('b', { text: r.nome }),
+          el('span', { class: 'marca', text: (r.params || []).filter((x) => x.req).map((x) => x.n).join(' + ') || 'sem parâmetro' })
+        ]));
+        if (r.quando) it.appendChild(el('div', { class: 'hint', text: 'Use quando ' + r.quando + '.' }));
+        if (r.nota) it.appendChild(el('div', { class: 'hint', text: r.nota }));
+        const b = el('button', { class: 'btn sm' + (r === rota ? ' primary' : ''), text: r === rota ? 'Em uso' : 'Usar esta' });
+        b.addEventListener('click', () => {
+          rota = r;
+          itens.forEach((x, k) => {
+            x.it.className = 'rota-item' + (rotas[k] === rota ? ' atual' : '');
+            x.b.className = 'btn sm' + (rotas[k] === rota ? ' primary' : '');
+            x.b.textContent = rotas[k] === rota ? 'Em uso' : 'Usar esta';
+          });
+          out.innerHTML = '';
+          montaParams();
+        });
+        it.appendChild(el('div', { class: 'btn-row', style: { marginTop: '6px' } }, [b]));
+        itens.push({ it: it, b: b });
+        lista.appendChild(it);
+      });
+      secRotas.appendChild(lista);
+      body.appendChild(secRotas);
+    }
+
+    body.appendChild(secParams);
     body.appendChild(el('h3', { class: 'sec-tit', text: 'Chamada' }));
     body.appendChild(urlBox);
-    atualiza();
+    montaParams();
 
     const copia = (txt, ok) => {
       if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => AG.toast(ok), () => AG.toast('Não consegui copiar.'));
       else AG.toast('Cópia não disponível neste navegador.');
     };
 
-    const out = el('div', { style: { marginTop: '10px' } });
     const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
+    const enc = () => ({ fonte: f, rota: rota, saida: out, question: '' });
+    const marca = () => ({ fonteId: f.id, rotaId: rota.id, valores: Object.assign({}, valores) });
 
     /* Testar primeiro, trazer depois: quem confere a prévia vê o filtro
        ignorado ali, e não três análises adiante. Trazer sem testar continua
        valendo — é a mesma chamada, com ingestão no fim. */
     const btnTeste = el('button', { class: 'btn sm primary', text: 'Testar agora' });
-    btnTeste.addEventListener('click', () => chamar(f, montarURL(f, valores), out, btnTeste, { ingerir: false }));
+    btnTeste.addEventListener('click', () => chamar(f, montarURL(alvo(), valores), out, btnTeste,
+      { ingerir: false, encadear: enc() }));
     acoes.appendChild(btnTeste);
 
     const btnTrazer = el('button', { class: 'btn sm', text: 'Trazer para o agente' });
-    btnTrazer.addEventListener('click', () => chamar(f, montarURL(f, valores), out, btnTrazer, { ingerir: true }));
+    btnTrazer.addEventListener('click', () => chamar(f, montarURL(alvo(), valores), out, btnTrazer,
+      { ingerir: true, encadear: enc(), marca: marca() }));
     acoes.appendChild(btnTrazer);
 
     acoes.appendChild(el('button', {
       class: 'btn sm', text: 'Copiar URL',
-      onclick: () => copia(montarURL(f, valores), 'URL copiada.')
+      onclick: () => copia(montarURL(alvo(), valores), 'URL copiada.')
     }));
     acoes.appendChild(el('button', {
       class: 'btn sm', text: 'Copiar fetch()',
       onclick: () => {
-        const u = montarURL(f, valores);
+        const u = montarURL(alvo(), valores);
         const cab = f.acesso === 'key' ? ',\n  { headers: { \'chave-api-dados\': \'SUA_CHAVE\' } }' : '';
         copia('const r = await fetch(\n  "' + u + '"' + cab + '\n);\nconst dados = await r.json();', 'Snippet copiado.');
       }
     }));
-    acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Abrir numa aba', onclick: () => window.open(montarURL(f, valores), '_blank', 'noopener') }));
+    acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Abrir numa aba', onclick: () => window.open(montarURL(alvo(), valores), '_blank', 'noopener') }));
     if (f.doc) acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Documentação', onclick: () => window.open(f.doc, '_blank', 'noopener') }));
     body.appendChild(acoes);
 
@@ -22062,14 +22131,27 @@ const RECEITAS_ARQUIVO = [
        cidade. Trocar de rota reconstrói o cartão: os campos são outros. */
     const rotas = pedido.rotas || [];
     if (rotas.length > 1) {
-      cx.appendChild(el('div', { class: 'subline', text: 'Por onde você quer buscar:' }));
-      const linha = el('div', { class: 'btn-row', style: { flexWrap: 'wrap', marginBottom: '4px' } });
+      cx.appendChild(el('div', {
+        class: 'subline',
+        text: 'Esta fonte aceita ' + rotas.length + ' formas de entrada — escolha pelo que você tem em mãos:'
+      }));
+      /* Todas as rotas descrevem para que servem, sempre. Descrever só a
+         selecionada esconde a informação que faz falta a quem não tem o
+         parâmetro principal. */
+      const lista = el('div', { class: 'rotas-lista' });
       for (const r of rotas) {
         const atual = r.id === (pedido.rota || {}).id;
-        const b = el('button', {
-          class: 'btn sm' + (atual ? ' primary' : ''),
-          text: r.nome, title: r.quando || r.nome
-        });
+        const it = el('div', { class: 'rota-item' + (atual ? ' atual' : '') });
+        it.appendChild(el('div', { class: 'rota-nome' }, [
+          el('b', { text: r.nome }),
+          el('span', {
+            class: 'marca',
+            text: (r.params || []).filter((x) => x.req).map((x) => x.n).join(' + ') || 'sem parâmetro'
+          })
+        ]));
+        if (r.quando) it.appendChild(el('div', { class: 'hint', text: 'Use quando ' + r.quando + '.' }));
+        if (r.nota) it.appendChild(el('div', { class: 'hint', text: r.nota }));
+        const b = el('button', { class: 'btn sm' + (atual ? ' primary' : ''), text: atual ? 'Em uso' : 'Usar esta' });
         if (!atual) {
           b.addEventListener('click', () => {
             const m = PF().montar(f, pedido.entidades, AG.ultimaConsulta, r);
@@ -22082,12 +22164,10 @@ const RECEITAS_ARQUIVO = [
             cx.parentNode.replaceChild(corpo, cx);
           });
         }
-        linha.appendChild(b);
+        it.appendChild(el('div', { class: 'btn-row', style: { marginTop: '6px' } }, [b]));
+        lista.appendChild(it);
       }
-      cx.appendChild(linha);
-      const r = pedido.rota || {};
-      if (r.quando) cx.appendChild(el('div', { class: 'hint', text: '↳ ' + r.quando + '.' }));
-      if (r.nota) cx.appendChild(el('div', { class: 'hint', text: r.nota }));
+      cx.appendChild(lista);
     }
 
     const urlBox = el('code', { class: 'url-montada' });
