@@ -4060,6 +4060,17 @@ const FONTES = [
   doc:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
   chave:["cvm","fundo","fundos","cota","valor da cota","patrimonio liquido","cotistas","informe diario","captacao","resgate","comparar fundos","investimento"] },
 
+{ id:"cvm-fi-lamina", nome:"CVM — Lâmina de informações essenciais dos fundos", org:"CVM", dom:"mercado",
+  acesso:"file", gran:"empresa", core:true, peso:92,
+  desc:"A lâmina que o gestor é obrigado a publicar, em DADO ESTRUTURADO e não em PDF: taxa de administração, taxa de performance, público-alvo, classificação, patrimônio e rentabilidade, uma linha por fundo por competência. É a base que responde \"qual a taxa deste CNPJ\" para o mercado inteiro de uma vez, sem abrir o site de gestora nenhuma.",
+  base:"https://dados.cvm.gov.br/dataset/fi-doc-lamina",
+  formato:"CSV dentro de ZIP, um arquivo por competência mensal",
+  periodicidade:"Semanal, com reapresentação dos 12 meses anteriores; histórico desde janeiro de 2019",
+  cobertura:"Brasil — fundos obrigados a publicar lâmina",
+  auditoria:"Não auditada no navegador. Portal de dados abertos, arquivo por competência: `.../dados/FI/DOC/LAMINA/DADOS/lamina_fi_AAAAMM.zip`. O agente descompacta ZIP sozinho. O PONTO desta fonte é que a lâmina existe aqui como TABELA — procurar a lâmina no site de cada gestora é buscar em dezenas de layouts diferentes o que a CVM já padronizou num arquivo só. O PDF do gestor continua valendo pelo texto e pelo gráfico dele, e para isso há os atalhos na resposta do agente.",
+  doc:"https://dados.cvm.gov.br/dataset/fi-doc-lamina",
+  chave:["lamina","laminas","lamina de informacoes essenciais","taxa de administracao","taxa de performance","publico alvo","classificacao","cvm","fundo","fundos","custo","taxa"] },
+
 { id:"cvm-fi-cad", nome:"CVM — Cadastro de fundos (nome, classe, gestor, taxa)", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", core:true, peso:90,
   desc:"O de-para do CNPJ: denominação social, classe, situação cadastral, data de início, administrador, gestor, auditor, público-alvo, taxa de administração e taxa de performance. É o que transforma um ranking de catorze dígitos num ranking legível — e o que permite perguntar se a taxa de administração explica o retorno entregue.",
@@ -4214,6 +4225,95 @@ const FONTES = [
         base:"https://queridodiario.ok.org.br/api/cities/2304400",
         params:[P("territory_id","2304400",true,"código IBGE de 7 dígitos")],
         produz:["territory_id","territory_name","state_code","level"] })
+  ]
+},
+{
+  /* A espinha dorsal de qualquer perfil de agente público eleito. Testada por
+     requisição real em 19/09/2026: responde JSON, sem chave. O que ela NÃO
+     faz é resolver o município pelo nome — o código é o do TSE, e não o do
+     IBGE. É por isso que a fonte `tse-codigos` existe logo abaixo. */
+  id:"tse-candidaturas", nome:"TSE — DivulgaCandContas (candidatos, bens, coligação)",
+  org:"Tribunal Superior Eleitoral", dom:"normas", acesso:"naoaud",
+  gran:"parlamentar", core:true, peso:86,
+  desc:"O registro oficial de quem se candidatou, por eleição, cargo e município: nome, partido, coligação, situação da candidatura, patrimônio declarado item a item, candidaturas anteriores e processos. É a base de qualquer dossiê de prefeito, governador ou parlamentar — e cobre também quem NÃO se elegeu.",
+  base:"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/ordinarias",
+  params:[], formato:"JSON", periodicidade:"Por eleição, com atualização durante o período eleitoral",
+  cobertura:"Brasil — eleições desde 2014 na API; municipais e gerais",
+  auditoria:"NÃO auditada quanto a CORS a partir deste ambiente, mas os quatro caminhos foram verificados por requisição real em 19/09/2026 e respondem JSON sem chave. TRÊS ARMADILHAS. (1) O código de município é o DO TSE, não o do IBGE: São Paulo é 71072 no TSE e 3550308 no IBGE, e os 5.570 códigos que o agente traz embutidos são os do IBGE. Carregue a fonte `tse-codigos` para fazer a ponte. (2) O detalhe do candidato devolve CPF e título de eleitor EM CLARO; o agente mascara os dois na tela e não os escreve em arquivo exportado — é registro público, mas planilha circula por e-mail. (3) O próprio JSON traz `st_DIVULGA` e `st_DIVULGA_BENS`: quando vêm falsos, o TSE está dizendo para não exibir, e o agente obedece.",
+  doc:"https://divulgacandcontas.tse.jus.br/divulga/",
+  chave:["tse","eleicao","eleicoes","candidato","candidatos","prefeito","governador","vereador","deputado","senador","bens declarados","patrimonio","partido","coligacao","dossie","perfil","briefing","politico"],
+  rotas:[
+    R({ id:"eleicoes", nome:"Quais eleições existem", quando:"você não sabe o id da eleição — comece por aqui", devolve:"lista",
+        base:"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/ordinarias",
+        params:[],
+        nota:"Devolve o `id` de cada eleição, que é obrigatório nas outras rotas. Municipais de 2024 = 2045202024; geral de 2022 = 2040602022.",
+        produz:["id","ano","nomeEleicao","tipoAbrangencia","dataEleicao"] }),
+    R({ id:"cargos", nome:"Cargos em disputa num município", quando:"você tem o código do TSE e quer saber o código do cargo", devolve:"registro",
+        base:"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/listar/municipios/2045202024/71072/cargos",
+        params:[P("eleicao","2045202024",true,"id vindo da rota de eleições"),
+                P("municipio","71072",true,"código do TSE — NÃO é o do IBGE")],
+        nota:"Prefeito é o cargo 11, vereador 13, governador 3, senador 5, deputado federal 6. Confirme aqui em vez de decorar.",
+        produz:["unidadeEleitoralDTO","cargos"] }),
+    R({ id:"candidatos", nome:"Candidatos de um cargo", quando:"você quer a lista para achar a pessoa", devolve:"lista",
+        base:"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/candidatura/listar/2024/71072/2045202024/11/candidatos",
+        params:[P("ano","2024",true,"AAAA"),P("municipio","71072",true,"código do TSE"),
+                P("eleicao","2045202024",true,"id da eleição"),P("cargo","11",true,"11 = prefeito")],
+        nota:"Traz nome de urna, nome completo, número, partido, situação e o `id` do candidato — que é o que a rota de detalhe pede.",
+        produz:["candidatos","cargo","unidadeEleitoral"] }),
+    R({ id:"detalhe", nome:"Ficha completa de um candidato", quando:"você já tem o id do candidato", devolve:"registro",
+        base:"https://divulgacandcontas.tse.jus.br/divulga/rest/v1/candidatura/buscar/2024/71072/2045202024/candidato/250002078851",
+        params:[P("ano","2024",true,"AAAA"),P("municipio","71072",true,"código do TSE"),
+                P("eleicao","2045202024",true,"id da eleição"),P("candidato","250002078851",true,"id vindo da rota de candidatos")],
+        nota:"Aqui vêm os bens declarados um a um (descrição, tipo, valor, data), as candidaturas anteriores, a coligação e os processos. É também onde aparecem CPF e título — que o agente mascara.",
+        produz:["nomeCompleto","nomeUrna","partido","coligacao","bens","totalDeBens","eleicoesAnteriores","processosCassacao","descricaoSituacao","fotoUrl"] })
+  ]
+},
+{
+  id:"tse-codigos", nome:"TSE — De-para do código de município: TSE × IBGE",
+  org:"Tribunal Superior Eleitoral", dom:"territorio", acesso:"file",
+  gran:"municipio", peso:70,
+  desc:"A tabela oficial que liga o código de município do TSE ao do IBGE. Sem ela, nenhuma consulta eleitoral casa com dado fiscal, populacional ou de compras — que são todos chaveados pelo IBGE.",
+  base:"https://dadosabertos.tse.jus.br/dataset/codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge",
+  params:[], formato:"CSV", periodicidade:"Revisada quando há criação ou fusão de município",
+  cobertura:"Brasil — 5.570 municípios e as 27 UF",
+  auditoria:"Não auditada no navegador. É arquivo de portal, não endpoint. Carregue uma vez e cruze pelo nome do município + UF, ou pelo código, com qualquer base do agente: o de-para é o que transforma uma consulta eleitoral em análise territorial.",
+  doc:"https://dadosabertos.tse.jus.br/dataset/codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge",
+  chave:["tse","ibge","codigo","de para","depara","municipio","conversao","eleicao","chave"] },
+{
+  /* Das pouquíssimas APIs grandes que liberam CORS de propósito: a Wikimedia
+     documenta `origin=*` para chamada anônima. Num agente que roda no
+     navegador do usuário, isso é raro o bastante para valer a entrada. */
+  id:"wikidata", nome:"Wikidata e Wikipédia — biografia e cargos de pessoas públicas",
+  org:"Wikimedia Foundation", dom:"normas", acesso:"naoaud",
+  gran:"instituicao", peso:64,
+  desc:"Dados estruturados sobre pessoas públicas: cargos ocupados com data de início e fim, partido, formação, local de nascimento — e o resumo da Wikipédia em português. Serve para dar a trajetória que o registro eleitoral não conta.",
+  base:"https://pt.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts&exintro=1&explaintext=1&redirects=1&titles=Ricardo%20Nunes",
+  params:[P("titles","Ricardo Nunes",true,"nome do verbete"),
+          P("origin","*",true,"é este parâmetro que libera a chamada do navegador"),
+          P("format","json",true,""),P("action","query",true,""),
+          P("prop","extracts",false,"extracts = resumo; pageimages = foto")],
+  formato:"JSON", periodicidade:"Contínua",
+  cobertura:"Mundial",
+  auditoria:"NÃO auditada a partir deste ambiente. A Wikimedia documenta CORS anônimo via `origin=*` — sem esse parâmetro a chamada falha no navegador, com ele deve passar; seu primeiro teste confirma. AVISO DE NATUREZA DA FONTE: Wikipédia é enciclopédia colaborativa, não registro oficial. Serve de contexto e de ponto de partida, nunca de prova — para o que é oficial, o TSE e o diário do município é que valem.",
+  doc:"https://www.mediawiki.org/wiki/API:Main_page",
+  chave:["wikipedia","wikidata","biografia","perfil","pessoa","politico","prefeito","governador","cargo","trajetoria","briefing"],
+  rotas:[
+    R({ id:"resumo", nome:"Resumo da Wikipédia", quando:"você quer o parágrafo de abertura do verbete", devolve:"registro",
+        base:"https://pt.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts&exintro=1&explaintext=1&redirects=1&titles=Ricardo%20Nunes",
+        params:[P("titles","Ricardo Nunes",true,"nome do verbete"),P("origin","*",true,"libera o CORS")],
+        nota:"`redirects=1` faz o nome popular achar o verbete certo. Sem `origin=*` a chamada é barrada pelo navegador.",
+        produz:["query.pages.*.title","query.pages.*.extract"] }),
+    R({ id:"busca", nome:"Procurar o verbete pelo nome", quando:"você não sabe o título exato", devolve:"lista",
+        base:"https://pt.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=10&srsearch=prefeito%20de%20Fortaleza",
+        params:[P("srsearch","prefeito de Fortaleza",true,"termo de busca"),P("origin","*",true,"libera o CORS"),
+                P("srlimit","10",false,"quantos resultados")],
+        produz:["query.search[].title","query.search[].snippet"] }),
+    R({ id:"wikidata", nome:"Cargos e datas, estruturado (Wikidata)", quando:"você quer a trajetória com datas, não o texto", devolve:"registro",
+        base:"https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&languages=pt&sites=ptwiki&titles=Ricardo%20Nunes",
+        params:[P("titles","Ricardo Nunes",true,"título do verbete na Wikipédia em português"),
+                P("origin","*",true,"libera o CORS"),P("sites","ptwiki",true,"")],
+        nota:"P39 é o cargo ocupado, com qualificadores de início (P580) e fim (P582); P102 é o partido. É a versão com datas do que o resumo conta em prosa.",
+        produz:["entities.*.labels","entities.*.claims.P39","entities.*.claims.P102"] })
   ]
 },
 {
@@ -5561,6 +5661,10 @@ const RECEITAS_ARQUIVO = [
        "retorno" e "real" também aparecem em frases de ranking comum --- */
     { intent: 'contabil', re: /(vis(ao|oes|ão|ões) cont[áa]bil|vis(ao|oes|ão|ões) cont[áa]beis|plano de contas|receita e despesa|despesa e receita|\brcl\b|\bdcl\b|resultado orcamentario|execucao orcamentaria|balanco orcamentario|por natureza (da )?(receita|despesa)|analise contabil|contas do ente|demonstrativo)/ },
     { intent: 'fincarteira', re: /(carteira do rpps|composicao da carteira|enquadramento|resolucao cmn|limites? (da )?cmn|\bdair\b|distribuicao por segmento|concentracao por gestor|quanto (tem|esta) em cada (fundo|segmento))/ },
+    /* Antes de tudo da família de fundos: "taxa de administração do fundo X"
+       casaria com finrisco por "administração"/"rentabilidade", e a lâmina é
+       uma consulta a UM fundo, não uma análise de série. */
+    { intent: 'finlamina', re: /(lamina|laminas|lamina de informacoes|informacoes essenciais|taxa de administracao|taxa de adm\b|taxa de performance|taxa de ingresso|taxa de saida|taxa de resgate|publico alvo|aplicacao (inicial|minima)|custo do fundo|quanto (custa|cobra) (o|esse|este) fundo|cobra de taxa|prazo de resgate|prazo de cotizacao)/ },
     /* ANTES de fincompara, e de propósito: "comparar os fundos contra os
        pares" casa com as duas regras, e a específica tem de vencer. Meta
        setorial É comparação de fundos — só que contra um benchmark que não
@@ -5615,7 +5719,7 @@ const RECEITAS_ARQUIVO = [
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
     finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
-    fincompara: 1, fincarteira: 1, finsetorial: 1, contabil: 1,
+    fincompara: 1, fincarteira: 1, finsetorial: 1, finlamina: 1, contabil: 1,
     /* a consulta por identificador não sai da base carregada: não há dimensão
        nem medida a exigir, e exigir uma seria inventar requisito */
     consulta: 1 };
@@ -5852,14 +5956,26 @@ const RECEITAS_ARQUIVO = [
        base). O que separa uma da outra é haver um CNPJ CONCRETO na frase, com
        dígito que fecha e fonte no catálogo que o resolva — coisa que só o
        detector sabe dizer. Regex aqui roubaria "valide os CNPJs da base". */
-    if (AG.consulta) {
+    /* Terceira vez que este princípio aparece no projeto, depois de
+       "panorama" (município de SP) e "barras" (município do PI): o
+       VOCABULÁRIO DO AGENTE tem precedência sobre o vocabulário externo.
+       "lâmina do CNPJ X" diz o que o usuário quer; deixar o detector de
+       identificador sequestrar a frase seria responder outra pergunta.
+       A exceção é `documents`, que casa com a palavra "cnpj" solta — era
+       justamente dela que a regra de identificador precisava vencer. */
+    let regraExplicita = null;
+    for (const r of INTENT_RULES) if (r.re.test(q)) { regraExplicita = r.intent; break; }
+    if (AG.consulta && !(regraExplicita && regraExplicita !== 'documents')) {
       const ids = AG.consulta.detectar(question);
-      const util = ids.filter((d) => d.valido && (AG.consulta.fontesPara(d.tipo).length || d.semFonte));
+      const util = ids.filter((d) => d.valido && (AG.consulta.fontesPara(d.tipo).length || d.semFonte))
+        /* ...e que NÃO estejam numa base já aberta. Com o arquivo de lâminas
+           da CVM na tela, "a taxa do CNPJ X" é pergunta sobre a base, não
+           pedido de rede — e forçar `consulta` aqui sequestrava a resposta
+           antes de qualquer regra de intenção ser testada. */
+        .filter((d) => !(AG.consulta.noCarregado && AG.consulta.noCarregado(d, datasets)));
       if (util.length) { intent = 'consulta'; intentExplicit = true; }
     }
-    if (!intent) {
-      for (const r of INTENT_RULES) if (r.re.test(q)) { intent = r.intent; intentExplicit = true; break; }
-    }
+    if (!intent && regraExplicita) { intent = regraExplicita; intentExplicit = true; }
 
     /* agregação explícita */
     let agg = null;
@@ -6343,7 +6459,24 @@ const RECEITAS_ARQUIVO = [
     return s;
   }
 
-  AG.nlu = { parseQuestion, parseTime, parseNumericFilters, parseBands, parseDatePart, parseChart,
+  /**
+   * A frase casa com alguma regra de intenção explícita? É a mesma decisão
+   * que o parseQuestion usa para dar precedência ao vocabulário do agente
+   * sobre o detector de identificador — exposta porque o app precisa dela
+   * ANTES de montar o plano, no portão de consulta por identificador.
+   * `documents` fica de fora porque casa com a palavra "cnpj" solta.
+   */
+  function regraExplicita(question) {
+    const q = AG.norm(question || '');
+    for (const r of INTENT_RULES) if (r.re.test(q)) return r.intent;
+    return null;
+  }
+  function mandaNoIdentificador(question) {
+    const r = regraExplicita(question);
+    return !!(r && r !== 'documents');
+  }
+
+  AG.nlu = { parseQuestion, regraExplicita, mandaNoIdentificador, parseTime, parseNumericFilters, parseBands, parseDatePart, parseChart,
     pickDefaultMeasure, pickDefaultDimension, INTENT_RULES, CHART_RULES };
 })();
 
@@ -12118,8 +12251,47 @@ const RECEITAS_ARQUIVO = [
     return out;
   }
 
+  /**
+   * O identificador já está numa base aberta? Então a resposta está AQUI, e
+   * não na rede — e a pergunta não é uma consulta por identificador, é uma
+   * pergunta sobre a base carregada.
+   *
+   * Esta regra nasceu com a lâmina de fundos: com o arquivo da CVM na tela,
+   * "a taxa do CNPJ X" é busca local, e oferecer uma ida à Receita no lugar
+   * seria trocar o dado certo por uma chamada que responde outra coisa. É o
+   * mesmo princípio que já vale para as fontes de arquivo — o que está
+   * carregado vem antes do que precisa ser buscado.
+   *
+   * A comparação é por DÍGITO, porque a base pode guardar
+   * "00.000.000/0001-91" e a pergunta trazer o número puro. E só olha
+   * colunas de identificador, dimensão ou texto: procurar 14 dígitos dentro
+   * de uma coluna de valor acha coincidência, não chave.
+   *
+   * NÃO exige dígito verificador válido: o teste do dígito serve para
+   * decidir se vale gastar uma requisição, e não vale nada quando a
+   * resposta é local.
+   */
+  function noCarregado(d, datasets) {
+    const lista = datasets || (AG.APP && AG.APP.datasets) || [];
+    const alvo = String(d && (d.valor === undefined ? d.bruto : d.valor) || '').replace(/\D+/g, '');
+    if (alvo.length < 8) return false;
+    for (const ds of lista) {
+      if (!ds || !ds.rows || !ds.rows.length) continue;
+      const cols = (ds.columns || []).filter((c) =>
+        !c.virtual && (c.role === 'id' || c.role === 'dimension' || c.role === 'text'));
+      for (const c of cols) {
+        for (const r of ds.rows) {
+          const v = r[c.key];
+          if (v === null || v === undefined) continue;
+          if (String(v).replace(/\D+/g, '') === alvo) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   AG.consulta = {
-    detectar, fontesPara, fontesQueFiltram, resolve, paramDe, casaParam, colunasCom, valoresDe,
+    detectar, noCarregado, fontesPara, fontesQueFiltram, resolve, paramDe, casaParam, colunasCom, valoresDe,
     cnpjValido, cpfValido, ibgeMunicipioValido, TIPOS, ORDEM
   };
 })();
@@ -12803,6 +12975,278 @@ const RECEITAS_ARQUIVO = [
     entidades, candidatas, montar, resolver, continuar, paraPergunta, rotasDe, buscaVazia, soArquivo,
     vale, papelDe, jsonDe, ORIGEM
   };
+})();
+
+
+/* ==== 79-lamina.js ==== */
+/* ============================================================
+   79 — LÂMINA DE FUNDO: O CUSTO E AS CONDIÇÕES, POR CNPJ
+
+   A pergunta "qual a taxa deste fundo?" tem duas respostas possíveis, e a
+   diferença entre elas é o projeto inteiro.
+
+   A resposta ingênua é ir ao site da gestora buscar o PDF da lâmina. São
+   centenas de gestoras, cada uma com um layout, nenhuma com API, e nenhuma
+   com CORS — e o layout muda sem avisar. Um raspador disso nasce quebrado.
+
+   A resposta certa é que a CVM já OBRIGA todas elas a publicar o mesmo
+   conteúdo em formato padronizado, e publica o resultado como tabela
+   semanal, com histórico desde 2019. Uma vez carregada essa base, "a lâmina
+   do CNPJ X" é uma busca LOCAL — sem rede, sem raspagem, e para o mercado
+   inteiro de uma vez em vez de um fundo por vez.
+
+   Este módulo não sabe o nome das colunas da CVM, e é de propósito: ele
+   RECONHECE conceitos por padrão sobre os rótulos da base carregada. Assim
+   funciona igual se a CVM renomear um campo, se o arquivo vier da ANBIMA,
+   ou se for a planilha que o próprio usuário montou.
+   ============================================================ */
+
+(function () {
+  const norm = AG.norm;
+
+  /* Conceito → como ele costuma aparecer escrito. A ordem importa: o
+     específico antes do genérico, senão "taxa de performance" casa com a
+     regra de "taxa de administração" por conter a palavra taxa. */
+  const CONCEITOS = [
+    { k: 'taxaAdm', rot: 'Taxa de administração', tipo: 'pct',
+      re: /(taxa|tx)[ _]*(de[ _]*)?(adm|administracao)|adm[ _]*(taxa|rate)|management fee/ },
+    { k: 'taxaPerf', rot: 'Taxa de performance', tipo: 'pct',
+      re: /(taxa|tx)[ _]*(de[ _]*)?(perf|performance|desempenho)|performance fee/ },
+    { k: 'taxaEntrada', rot: 'Taxa de entrada', tipo: 'pct',
+      re: /(taxa|tx)[ _]*(de[ _]*)?(ingresso|entrada|aplicacao)/ },
+    { k: 'taxaSaida', rot: 'Taxa de saída', tipo: 'pct',
+      re: /(taxa|tx)[ _]*(de[ _]*)?(saida|resgate)/ },
+    { k: 'taxaTotal', rot: 'Taxa total de despesas', tipo: 'pct',
+      re: /(taxa|tx)[ _]*(total|maxima)|despesas? total|\bttd\b|expense ratio/ },
+    { k: 'classe', rot: 'Classe', tipo: 'texto',
+      re: /^(classe|categoria|tp[ _]?fundo|tipo[ _]?(de[ _]?)?fundo|class|classificacao|segmento|estrategia)/ },
+    { k: 'publico', rot: 'Público-alvo', tipo: 'texto',
+      re: /publico[ _]*alvo|investidor[ _]*(alvo|qualificado|profissional)|destinado/ },
+    { k: 'benchmark', rot: 'Índice de referência', tipo: 'texto',
+      re: /benchmark|indice[ _]*(de[ _]*)?referencia|objetivo|parametro[ _]*(de[ _]*)?refer/ },
+    { k: 'pl', rot: 'Patrimônio líquido', tipo: 'moeda',
+      re: /(vl[ _]*)?patrim[oô]nio|patrim[ _]*liq|\bpl[ _]*(medio|liquido)?$|net asset/ },
+    /* A CVM escreve INVEST_INICIAL_MIN; outra fonte escreve "Aplicação
+        inicial mínima"; a planilha do usuário escreve "mínimo". O módulo
+        reconhece conceito, então o padrão precisa aceitar as três. */
+    { k: 'aplicMin', rot: 'Aplicação mínima', tipo: 'moeda',
+      re: /(aplic|invest|valor)\w*[ _]*(inicial|minim)|minim[oa][ _]*(aplic|invest|inicial)|(inicial|minim\w*)[ _]*(aplic|invest)/ },
+    /* PR_PGTO_RESGATE da CVM vira "pr pgto resgate" — sem a palavra "prazo"
+        por extenso e sem "cotização". O que identifica o conceito é a dupla
+        abreviada, não a palavra inteira. */
+    { k: 'prazoResgate', rot: 'Prazo de resgate', tipo: 'texto',
+      re: /(prazo|pr)[ _]*(de[ _]*)?(pgto|pagto|pagamento|resgate|conversao|cotizacao)|cotizacao|liquidacao|\bd\+/ },
+    { k: 'risco', rot: 'Perfil de risco', tipo: 'texto',
+      re: /perfil[ _]*(de[ _]*)?risco|grau[ _]*(de[ _]*)?risco|nivel[ _]*(de[ _]*)?risco|suitability/ },
+    { k: 'rentab', rot: 'Rentabilidade', tipo: 'pct',
+      re: /rentab|retorno[ _]*(acumulado|do[ _]*periodo|anual)?|performance[ _]*(acumulada|do)/ },
+    { k: 'gestor', rot: 'Gestor', tipo: 'texto', re: /^(gestor|gestora|gestao)/ },
+    { k: 'admin', rot: 'Administrador', tipo: 'texto', re: /^(administrador|administradora)/ },
+    { k: 'situacao', rot: 'Situação', tipo: 'texto', re: /^(sit|situacao|status)/ },
+    { k: 'competencia', rot: 'Competência', tipo: 'texto', re: /(dt[ _]*)?comptc|competencia|referencia$|data[ _]*base/ }
+  ];
+
+  const CNPJ_RE = /(cnpj|cgc)/;
+  const NOME_RE = /(denom|razao|nome|fundo|social)/;
+  const soDigito = (v) => String(v === null || v === undefined ? '' : v).replace(/\D+/g, '');
+
+  /**
+   * Reconhece se a base carregada tem cara de lâmina — e diz o que achou e
+   * o que faltou. "Não achei" com a lista do que faltou é resposta; "não
+   * achei" sozinho é desculpa.
+   */
+  function detectar(ds) {
+    if (!ds || !ds.columns || !ds.rows || !ds.rows.length) {
+      return { ok: false, motivo: 'base vazia' };
+    }
+    const cols = ds.columns.filter((c) => !c.virtual);
+    const rot = (c) => norm(c.label || c.key);
+
+    /* O CNPJ é a chave. Sem ele não há lâmina — há uma tabela qualquer. O
+       teste não é o nome: é o conteúdo ter 14 dígitos na maioria das linhas. */
+    const amostra = ds.rows.slice(0, Math.min(300, ds.rows.length));
+    let cnpjCol = null, melhor = 0;
+    for (const c of cols) {
+      const d = amostra.map((r) => soDigito(r[c.key]));
+      const bons = d.filter((x) => x.length === 14).length / (amostra.length || 1);
+      const pontos = bons + (CNPJ_RE.test(rot(c)) ? 1 : 0);
+      if (bons >= 0.5 && pontos > melhor) { melhor = pontos; cnpjCol = c; }
+    }
+    const nomeCol = cols.find((c) => c !== cnpjCol && NOME_RE.test(rot(c)) &&
+      (c.role === 'dimension' || c.role === 'text' || c.role === 'id')) || null;
+
+    const conceitos = {};
+    const usados = new Set([cnpjCol && cnpjCol.key, nomeCol && nomeCol.key].filter(Boolean));
+    for (const cc of CONCEITOS) {
+      for (const c of cols) {
+        if (usados.has(c.key)) continue;
+        if (!cc.re.test(rot(c))) continue;
+        conceitos[cc.k] = { col: c, rot: cc.rot, tipo: cc.tipo,
+          escala: cc.tipo === 'pct' ? escalaDe(ds, c) : 1 };
+        usados.add(c.key);
+        break;
+      }
+    }
+    const achados = CONCEITOS.filter((x) => conceitos[x.k]).map((x) => x.k);
+    const faltando = CONCEITOS.filter((x) => !conceitos[x.k] && ESSENCIAIS[x.k]).map((x) => x.rot);
+
+    /* Uma lâmina de verdade tem a chave e pelo menos um dado de custo ou de
+       condição. Sem isso é o cadastro, ou o informe diário, ou outra coisa. */
+    const temCusto = !!(conceitos.taxaAdm || conceitos.taxaPerf || conceitos.taxaTotal);
+    const temCondicao = !!(conceitos.publico || conceitos.aplicMin || conceitos.prazoResgate || conceitos.benchmark);
+    return {
+      ok: !!cnpjCol && (temCusto || temCondicao),
+      motivo: !cnpjCol
+        ? 'não achei uma coluna com CNPJ de 14 dígitos — sem a chave não dá para procurar um fundo'
+        : (!temCusto && !temCondicao)
+          ? 'achei o CNPJ, mas nenhuma coluna de taxa, público-alvo, aplicação mínima ou prazo: esta base não é uma lâmina'
+          : null,
+      cnpjCol: cnpjCol, nomeCol: nomeCol, conceitos: conceitos,
+      achados: achados, faltando: faltando, temCusto: temCusto
+    };
+  }
+  /* O que se espera de uma lâmina e faz falta quando não vem. O resto é bônus. */
+  const ESSENCIAIS = { taxaAdm: 1, taxaPerf: 1, publico: 1, classe: 1, aplicMin: 1, prazoResgate: 1, benchmark: 1 };
+
+  /** Lê o número, sem decidir ainda se ele é 0,5% ou 50%. */
+  function bruto(v) {
+    if (v === null || v === undefined || v === '') return null;
+    let n = v;
+    if (typeof n === 'string') {
+      n = parseFloat(n.replace(/\./g, '').replace(',', '.').replace(/[^\d.\-]/g, ''));
+    }
+    return (typeof n === 'number' && isFinite(n)) ? n : null;
+  }
+
+  /**
+   * A escala é do COLUNA, não do valor — e essa distinção é a diferença
+   * entre 0,10% e 10%.
+   *
+   * A CVM escreve a taxa em por cento: "0,50" é meio por cento, "2,00" são
+   * dois por cento. Outra fonte escreve em fração: 0,005 e 0,02. Olhar um
+   * valor de cada vez não resolve o caso ambíguo — 0,10 é 0,1% na convenção
+   * da CVM e 10% na outra, e as duas leituras são plausíveis.
+   *
+   * O que decide é a COLUNA INTEIRA: se a mediana dos valores está na casa
+   * das unidades (0,3 ou mais), a coluna está escrita em por cento e se
+   * divide por 100; se está na casa dos milésimos, já é fração. Um fundo
+   * barato não muda a escala da coluna em que vive.
+   */
+  function escalaDe(ds, col) {
+    const vals = [];
+    for (const r of ds.rows) {
+      const n = bruto(r[col.key]);
+      if (n !== null && n > 0) vals.push(n);
+      if (vals.length >= 2000) break;
+    }
+    if (vals.length < 3) return 1;                 // sem amostra, não se inventa escala
+    const med = AG.stats.quantile(vals.slice().sort((x, y) => x - y), 0.5);
+    return med !== null && med >= 0.3 ? 100 : 1;
+  }
+
+  /** Converte para fração anual usando a escala já decidida para a coluna. */
+  function pct(v, escala) {
+    const n = bruto(v);
+    if (n === null) return null;
+    return n / (escala || 1);
+  }
+
+  /**
+   * Acha o fundo na base: por CNPJ (comparando só os dígitos, porque a
+   * pontuação varia) ou por pedaço do nome. Devolve a competência mais
+   * recente de cada fundo encontrado — a lâmina é republicada todo mês, e
+   * mostrar seis versões da mesma é ruído.
+   */
+  function buscar(ds, det, termo) {
+    const alvo = String(termo || '').trim();
+    if (!alvo) return { fundos: [], motivo: 'sem termo de busca' };
+    const dig = soDigito(alvo);
+    const porCnpj = dig.length >= 8;
+    const chave = norm(alvo);
+
+    const achados = new Map();
+    for (const r of ds.rows) {
+      const c = soDigito(r[det.cnpjCol.key]);
+      const nome = det.nomeCol ? String(r[det.nomeCol.key] || '') : '';
+      const casa = porCnpj
+        ? (dig.length === 14 ? c === dig : c.indexOf(dig) === 0)
+        : (nome && norm(nome).indexOf(chave) >= 0);
+      if (!casa) continue;
+      const atual = achados.get(c);
+      if (!atual || maisNova(r, atual, det)) achados.set(c, r);
+    }
+    return {
+      fundos: Array.from(achados.values()),
+      porCnpj: porCnpj,
+      motivo: achados.size ? null
+        : (porCnpj ? 'nenhum fundo com esse CNPJ na base carregada'
+          : 'nenhum fundo com esse nome na base carregada')
+    };
+  }
+  function maisNova(a, b, det) {
+    const k = det.conceitos.competencia && det.conceitos.competencia.col.key;
+    if (!k) return false;
+    const va = a[k], vb = b[k];
+    if (typeof va === 'number' && typeof vb === 'number') return va > vb;
+    return String(va) > String(vb);
+  }
+
+  /**
+   * A taxa sozinha não diz nada: 1,5% é caro num fundo de renda fixa e
+   * barato num de ações. O que informa é a POSIÇÃO dentro da própria classe
+   * — e, como no comparador setorial, a mediana dos pares SEM o fundo, para
+   * ele não competir consigo mesmo.
+   */
+  function contraClasse(ds, det, linha, conceito) {
+    const cc = det.conceitos[conceito || 'taxaAdm'];
+    const cl = det.conceitos.classe;
+    if (!cc) return null;
+    const minha = pct(linha[cc.col.key], cc.escala);
+    if (minha === null) return null;
+
+    const classe = cl ? String(linha[cl.col.key] || '').trim() : null;
+    const meuCnpj = soDigito(linha[det.cnpjCol.key]);
+    const vistos = new Set();
+    const pares = [];
+    for (const r of ds.rows) {
+      const c = soDigito(r[det.cnpjCol.key]);
+      if (c === meuCnpj || vistos.has(c)) continue;       // deixa-um-de-fora
+      if (classe && cl && String(r[cl.col.key] || '').trim() !== classe) continue;
+      const v = pct(r[cc.col.key], cc.escala);
+      if (v === null) continue;
+      vistos.add(c);
+      pares.push(v);
+    }
+    if (pares.length < 5) {
+      return { minha: minha, classe: classe, pares: pares.length, insuficiente: true };
+    }
+    pares.sort((a, b) => a - b);
+    const mediana = AG.stats.quantile(pares, 0.5);
+    const abaixo = pares.filter((x) => x < minha).length;
+    return {
+      minha: minha, classe: classe, pares: pares.length,
+      mediana: mediana, p25: AG.stats.quantile(pares, 0.25), p75: AG.stats.quantile(pares, 0.75),
+      percentil: abaixo / pares.length,
+      diferenca: mediana === null ? null : minha - mediana,
+      insuficiente: false
+    };
+  }
+
+  /** Os campos da lâmina de um fundo, prontos para a tela. */
+  function campos(det, linha) {
+    const out = [];
+    for (const cc of CONCEITOS) {
+      const d = det.conceitos[cc.k];
+      if (!d) continue;
+      const valorBruto = linha[d.col.key];
+      if (valorBruto === null || valorBruto === undefined || String(valorBruto).trim() === '') continue;
+      out.push({ k: cc.k, rot: cc.rot, tipo: cc.tipo, bruto: valorBruto,
+        num: cc.tipo === 'pct' ? pct(valorBruto, d.escala) : null });
+    }
+    return out;
+  }
+
+  AG.lamina = { detectar, buscar, contraClasse, campos, pct, bruto, escalaDe, soDigito, CONCEITOS, ESSENCIAIS };
 })();
 
 
@@ -13582,9 +14026,20 @@ const RECEITAS_ARQUIVO = [
        vem ANTES do portão de "sem dados" — quem abre o arquivo e digita um
        CNPJ deve receber o caminho, não um pedido de anexo. Continua sem rede:
        o que aparece é a chamada montada e o botão. */
-    if (AG.consulta && AG.consultaUI) {
+    /* Duas regras decidem se este portão abre, e dizem a mesma coisa por
+       caminhos diferentes: o que o usuário PEDIU vale mais que o que a frase
+       CONTÉM, e o que está carregado vale mais que o que está na rede. Sem
+       elas, "lâmina do CNPJ X" com o arquivo da CVM aberto virava oferta de
+       consulta à Receita — que responde outra pergunta. */
+    const mandaOutraIntencao = AG.nlu && AG.nlu.mandaNoIdentificador && AG.nlu.mandaNoIdentificador(question);
+    if (AG.consulta && AG.consultaUI && !mandaOutraIntencao) {
       const ids = AG.consulta.detectar(question)
-        .filter((d) => !d.valido || d.semFonte || AG.consulta.fontesPara(d.tipo).length);
+        .filter((d) => !d.valido || d.semFonte || AG.consulta.fontesPara(d.tipo).length)
+        /* Se o identificador JÁ ESTÁ numa base carregada, a resposta está
+           aqui dentro e não na rede. Sem exigir dígito válido: o dígito
+           decide se compensa uma requisição, e não compensa nenhuma quando a
+           resposta é local. */
+        .filter((d) => !AG.consulta.noCarregado(d, APP.datasets));
       if (ids.length) {
         APP.ultimoPlano = { question: question, intent: 'consulta', dimensions: [], filters: [], notes: [] };
         AG.consultaUI.render(body, ids, question);
@@ -19976,8 +20431,44 @@ const RECEITAS_ARQUIVO = [
      mas não para voltar à mesma fonte com outro exercício. Com fonte e valores
      gravados, "e em 2023?" tem de onde partir e o painel ganha o botão de
      trocar o recorte. */
+  /* Campos que uma fonte pública publica em claro e que NÃO devem circular
+     em planilha. Registro público não é motivo para espalhar: o TSE mostra o
+     CPF do candidato na tela dele, com a página ao lado e o contexto todo;
+     uma coluna de CPF num XLSX que vai por e-mail é outra coisa. O agente
+     mascara na entrada — antes do perfilamento, antes de virar base — para
+     que o valor inteiro não exista em lugar nenhum daqui em diante.
+
+     A decisão é do CAMPO, não da fonte: assim vale para qualquer resposta
+     que traga o campo, inclusive de fontes que ainda nem estão no catálogo. */
+  const MASCARAR = [
+    { re: /^(cpf|nr[_ ]?cpf|num[_ ]?cpf|cpf[_ ]?candidato)$/, guarda: 3, rot: 'CPF' },
+    { re: /^(titulo|titulo[_ ]?eleitor|nr[_ ]?titulo|num[_ ]?titulo|titulo[_ ]?eleitoral)$/, guarda: 4, rot: 'título de eleitor' }
+  ];
+  function mascara(v, guarda) {
+    const d = String(v === null || v === undefined ? '' : v).replace(/\D+/g, '');
+    if (d.length < guarda + 2) return v;
+    return d.slice(0, guarda) + '•'.repeat(Math.max(3, d.length - guarda - 2)) + d.slice(-2);
+  }
+  /** Aplica a máscara e devolve quais campos foram mascarados, para dizer. */
+  function protege(planas) {
+    const tocados = new Set();
+    for (const r of planas) {
+      for (const k in r) {
+        const n = AG.norm(k).replace(/\s+/g, '_');
+        const regra = MASCARAR.find((x) => x.re.test(n));
+        if (!regra) continue;
+        const antes = r[k];
+        if (antes === null || antes === undefined || antes === '') continue;
+        const depois = mascara(antes, regra.guarda);
+        if (depois !== antes) { r[k] = depois; tocados.add(regra.rot); }
+      }
+    }
+    return Array.from(tocados);
+  }
+
   async function trazer(nome, linhas, origem, marca) {
     const planas = linhas.map((r) => achatar(r));
+    const mascarados = protege(planas);
     const blob = new Blob([JSON.stringify(planas)], { type: 'application/json' });
     const arq = new File([blob], AG.slug(nome).slice(0, 40) + '.json', { type: 'application/json' });
     const antes = AG.APP.datasets.length;
@@ -19989,6 +20480,10 @@ const RECEITAS_ARQUIVO = [
       if (marca && marca.fonteId) {
         novo.fonteId = marca.fonteId;
         novo.fonteParams = Object.assign({}, marca.valores);
+      }
+      if (mascarados.length) {
+        novo.mascarados = mascarados;
+        AG.toast(mascarados.join(' e ') + ' entraram mascarados — o número inteiro não fica na base.');
       }
       if (AG.ui && AG.ui.renderSources) AG.ui.renderSources();
     }
@@ -20829,7 +21324,7 @@ const RECEITAS_ARQUIVO = [
      dispara a partir da resposta do agente, onde não há janela aberta —
      e `fechar()` é inofensivo quando não há o que fechar. */
   AG.fontesUI = {
-    abrirFontes, montarURL, achatar, extrairLinhas, filtradas, estado, trazer,
+    abrirFontes, montarURL, achatar, extrairLinhas, filtradas, estado, trazer, protege, mascara,
     detalhe, chamarAvulso: chamar
   };
 
@@ -23841,6 +24336,334 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.setorialUI = { gruposDe, doCadastroCarregado, premioDaPergunta, medidaDaPergunta, manuais, abrirMontador };
+})();
+
+
+/* ==== 98-render-lamina.js ==== */
+/* ============================================================
+   98 — A TELA DA LÂMINA
+
+   Responde "qual a taxa deste CNPJ" sem sair da máquina, e põe a taxa no
+   único lugar onde ela significa alguma coisa: ao lado da mediana da classe
+   do fundo. 1,5% ao ano é caro num fundo de renda fixa e barato num de
+   ações — o número sozinho não diz nada.
+
+   Os atalhos para o PDF do gestor ficam aqui também, mas como ATALHO: um
+   botão que abre o repositório oficial e põe o CNPJ na área de
+   transferência. Nada de adivinhar o endereço da página de cada gestora.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const LA = AG.lamina;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+  const pctTxt = (v, c) => (v === null || v === undefined ? '—' : AG.fmtPct(v, c === undefined ? 2 : c));
+
+  /* O perfilador reconhece "2025-08" como data e guarda TIMESTAMP. Jogar o
+     número cru na tela ("competência 1754006400000") é pior que não mostrar:
+     parece um identificador e é uma data. */
+  function txtValor(c) {
+    const v = c.bruto;
+    if (typeof v === 'number' && v > 1e11) return AG.fmtDate(v);
+    if (v instanceof Date) return AG.fmtDate(v.getTime());
+    return String(v);
+  }
+
+  /** CNPJ com máscara, a partir dos 14 dígitos. */
+  function cnpjFmt(d) {
+    const s = LA.soDigito(d);
+    if (s.length !== 14) return String(d);
+    return s.slice(0, 2) + '.' + s.slice(2, 5) + '.' + s.slice(5, 8) + '/' + s.slice(8, 12) + '-' + s.slice(12);
+  }
+
+  /* Onde o documento oficial mora. São repositórios de BUSCA: o endereço
+     direto por CNPJ de cada um não foi verificado, então o agente abre a
+     busca e copia o CNPJ em vez de montar uma URL que pode dar 404. Chutar
+     um deep link é entregar um botão quebrado com cara de atalho. */
+  const REPOSITORIOS = [
+    { nome: 'Fundos.NET (B3/CVM)', url: 'https://fnet.bmfbovespa.com.br/fnet/publico/abrirGerenciadorDocumentosCVM',
+      oque: 'é onde o administrador PROTOCOLA a lâmina, o regulamento e os informes — o PDF oficial está aqui' },
+    { nome: 'Consulta a fundos da CVM', url: 'https://cvmweb.cvm.gov.br/SWB/Sistemas/SCW/CPublica/CPublica.asp',
+      oque: 'situação cadastral, administrador, auditor e o histórico do registro' },
+    { nome: 'Dados abertos da CVM — lâminas', url: 'https://dados.cvm.gov.br/dataset/fi-doc-lamina',
+      oque: 'a base que alimenta esta tela; baixe outra competência aqui' }
+  ];
+
+  /** O termo que a pergunta está pedindo: um CNPJ, ou um pedaço de nome. */
+  function alvoDaPergunta(question, plan, ds, det) {
+    const q = String(question || '');
+    const m = /(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2}|\b\d{14}\b)/.exec(q);
+    if (m) return { termo: LA.soDigito(m[1]), tipo: 'cnpj' };
+    /* Sem CNPJ na frase, um filtro sobre a coluna de nome serve de alvo —
+       é como o interpretador já entende "lâmina do fundo Alfa". */
+    for (const f of (plan && plan.filters) || []) {
+      if (det.nomeCol && f.column === det.nomeCol.key && f.value) {
+        return { termo: String([].concat(f.value)[0]), tipo: 'nome' };
+      }
+    }
+    /* Último recurso: o trecho depois de "lâmina do/da". */
+    const n = /l[aâ]mina\s+(?:d[oae]s?\s+)?(?:fundo\s+)?(.{3,60})$/i.exec(q.trim());
+    if (n) return { termo: n[1].replace(/[?.!]+$/, '').trim(), tipo: 'nome' };
+    return null;
+  }
+
+  AG.renderers.finlamina = function (body, ds, plan, question) {
+    const det = LA.detectar(ds);
+    if (!det.ok) return naoELamina(body, ds, det, question, plan);
+
+    const alvo = alvoDaPergunta(question, plan, ds, det);
+    if (!alvo) return semAlvo(body, ds, det, question, plan);
+
+    const achado = LA.buscar(ds, det, alvo.termo);
+    if (!achado.fundos.length) return naoAchou(body, ds, det, alvo, achado, question, plan);
+
+    /* Mais de um casamento por nome é escolha do usuário, não sorteio. */
+    if (achado.fundos.length > 1 && alvo.tipo === 'nome') {
+      return varios(body, ds, det, alvo, achado, question, plan);
+    }
+
+    const linha = achado.fundos[0];
+    const nome = det.nomeCol ? String(linha[det.nomeCol.key] || '') : '';
+    const cnpj = cnpjFmt(linha[det.cnpjCol.key]);
+    const cs = LA.campos(det, linha);
+    const comp = cs.find((x) => x.k === 'competencia');
+
+    head(body, nome || cnpj, 'CNPJ <b>' + AG.esc(cnpj) + '</b>' +
+      (comp ? ' · competência ' + AG.esc(txtValor(comp)) : '') +
+      ' · lâmina lida da base carregada, <b>sem sair da máquina</b>');
+
+    /* --- os quatro números que decidem se o fundo serve --- */
+    const val = (k) => { const c = cs.find((x) => x.k === k); return c ? c : null; };
+    const adm = val('taxaAdm'), perf = val('taxaPerf'), cl = val('classe'), pub = val('publico');
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Taxa de administração', adm && adm.num !== null ? pctTxt(adm.num) : (adm ? String(adm.bruto) : '—'),
+        'ao ano, sobre o patrimônio'),
+      U().kpi('Taxa de performance', perf ? (perf.num !== null ? pctTxt(perf.num) : String(perf.bruto)) : '—',
+        perf ? 'sobre o que exceder o índice' : 'não informada na lâmina'),
+      U().kpi('Classe', cl ? String(cl.bruto).slice(0, 26) : '—', 'é ela que define contra quem comparar'),
+      U().kpi('Público-alvo', pub ? String(pub.bruto).slice(0, 26) : '—', 'quem pode entrar')
+    ]));
+
+    /* --- a taxa contra a classe: o único lugar onde ela significa algo --- */
+    const cc = LA.contraClasse(ds, det, linha, 'taxaAdm');
+    if (cc && !cc.insuficiente) {
+      const caro = cc.diferenca > 0;
+      body.appendChild(U().insightNode(ins(caro ? 'warn' : 'good', caro ? '⚠' : '✓',
+        'A taxa de administração de <b>' + pctTxt(cc.minha) + '</b> está <b>' +
+        (caro ? 'acima' : 'abaixo') + '</b> da mediana de <b>' + pctTxt(cc.mediana) + '</b> dos ' +
+        cc.pares + ' outros fundos da classe <b>' + AG.esc(cc.classe || 'sem classe') + '</b> nesta base — ' +
+        'é mais cara que <b>' + AG.fmtPct(cc.percentil, 0) + '</b> deles. ' +
+        'A diferença de ' + pctTxt(Math.abs(cc.diferenca)) + ' ao ano ' +
+        (caro ? 'sai do seu bolso todo ano, componha por dez e veja' : 'fica com você') + '. ' +
+        'A mediana é calculada <b>sem este fundo</b>, senão ele entraria no próprio parâmetro.')));
+
+      const c = charts.card({
+        title: 'Onde esta taxa cai dentro da classe',
+        subtitle: cc.pares + ' fundos de ' + AG.esc(cc.classe || 'classe não informada') + ' · a barra escura é este fundo'
+      });
+      charts.renderInto(c.body, (w) => charts.barsH({
+        width: w, format: 'percent', measureLabel: 'Taxa de adm.',
+        data: [
+          { label: 'Este fundo', value: cc.minha, color: AG.PALETTE[3] },
+          { label: '1º quartil (mais barato)', value: cc.p25, color: AG.PALETTE[0] },
+          { label: 'Mediana da classe', value: cc.mediana, color: AG.PALETTE[0] },
+          { label: '3º quartil (mais caro)', value: cc.p75, color: AG.PALETTE[0] }
+        ]
+      }));
+      body.appendChild(c.wrap);
+    } else if (cc && cc.insuficiente) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Não dá para dizer se ' + pctTxt(cc.minha) + ' é caro ou barato: a base tem apenas <b>' + cc.pares +
+        '</b> outro(s) fundo(s) da classe <b>' + AG.esc(cc.classe || 'não informada') + '</b>, e mediana de menos de ' +
+        'cinco não descreve um mercado. Carregue a competência inteira da CVM em vez de um recorte.')));
+    }
+
+    /* --- todos os campos que a lâmina traz --- */
+    const td = {
+      columns: [{ key: 'campo', label: 'Campo da lâmina' }, { key: 'valor', label: 'Valor' }],
+      rows: cs.filter((x) => x.k !== 'competencia').map((x) => ({
+        campo: x.rot,
+        valor: x.tipo === 'pct' && x.num !== null ? pctTxt(x.num)
+          : x.tipo === 'moeda' ? AG.fmtNum(Number(String(x.bruto).replace(/\./g, '').replace(',', '.')), 'currency')
+            : txtValor(x)
+      }))
+    };
+    const cTab = charts.card({ title: 'A lâmina, campo a campo', subtitle: 'como veio da base, sem interpretação', tableData: td });
+    cTab.body.appendChild(charts.dataTable(td));
+    body.appendChild(cTab.wrap);
+
+    if (det.faltando.length) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Esta base não traz: <b>' + det.faltando.map((x) => AG.esc(x)).join('</b>, <b>') + '</b>. ' +
+        'Não quer dizer que o fundo não tenha — quer dizer que o campo não está no arquivo que você carregou. ' +
+        'O PDF do gestor costuma ter o que falta, e os atalhos abaixo levam até ele.')));
+    }
+
+    body.appendChild(atalhos(linha[det.cnpjCol.key], nome));
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: (nome || cnpj) + ' · taxa de adm. ' + (adm && adm.num !== null ? pctTxt(adm.num) : '—') };
+  };
+
+  /* =========================================================
+     OS ATALHOS PARA O DOCUMENTO OFICIAL
+     ========================================================= */
+  function atalhos(cnpjBruto, nome) {
+    const dig = LA.soDigito(cnpjBruto);
+    const wrap = el('div', { class: 'card', style: { marginTop: '12px' } });
+    wrap.appendChild(el('div', { class: 'card-title', text: 'O PDF da lâmina, no repositório oficial' }));
+    wrap.appendChild(el('div', {
+      class: 'hint', style: { margin: '4px 0 10px' },
+      html: 'A tabela acima é a lâmina em dado. O <b>PDF</b> tem o texto e o gráfico que o gestor escreveu, e ' +
+        'mora no repositório onde ele é obrigado a protocolar. Os botões abrem a busca já com o CNPJ copiado — ' +
+        'não monto o endereço direto do fundo porque esse formato muda de repositório para repositório, e um ' +
+        'atalho que dá 404 é pior que nenhum.'
+    }));
+    const linha = el('div', { class: 'btn-row' });
+    linha.appendChild(el('button', {
+      class: 'btn sm primary', text: '⧉ Copiar o CNPJ (' + cnpjFmt(cnpjBruto) + ')',
+      onclick: () => {
+        const t = cnpjFmt(cnpjBruto);
+        if (navigator.clipboard) navigator.clipboard.writeText(t).then(
+          () => AG.toast('CNPJ copiado — cole na busca do repositório.'),
+          () => AG.toast('Não consegui copiar; o CNPJ é ' + t));
+        else AG.toast('O CNPJ é ' + t);
+      }
+    }));
+    for (const r of REPOSITORIOS) {
+      linha.appendChild(el('button', {
+        class: 'btn sm ghost', text: '↗ ' + r.nome, title: r.oque,
+        onclick: () => window.open(r.url, '_blank', 'noopener')
+      }));
+    }
+    /* A página de documentos da gestora: busca escopada, não adivinhação. */
+    if (nome) {
+      linha.appendChild(el('button', {
+        class: 'btn sm ghost', text: '↗ Procurar a lâmina no site do gestor',
+        title: 'abre uma busca pública por "lâmina" + o nome do fundo',
+        onclick: () => window.open('https://duckduckgo.com/?q=' +
+          encodeURIComponent('lâmina de informações essenciais "' + nome + '" filetype:pdf'), '_blank', 'noopener')
+      }));
+    }
+    wrap.appendChild(linha);
+    wrap.appendChild(el('div', {
+      class: 'hint', style: { marginTop: '8px' },
+      html: 'Com o PDF na mão, <b>arraste-o para cá</b>: o agente lê PDF e extrai o texto, então a lâmina do gestor ' +
+        'vira mais uma base ao lado desta.'
+    }));
+    return wrap;
+  }
+
+  /* =========================================================
+     OS QUATRO JEITOS DE NÃO DAR CERTO, CADA UM COM O SEU CONSERTO
+     ========================================================= */
+  function naoELamina(body, ds, det, question, plan) {
+    head(body, 'Esta base não é uma lâmina', AG.esc(det.motivo || ''));
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      '<b>' + AG.esc(det.motivo || 'não reconheci o formato') + '.</b> ' +
+      'Uma lâmina tem, no mínimo, uma coluna de CNPJ e alguma coluna de taxa, público-alvo, aplicação mínima ' +
+      'ou prazo de resgate. O agente não exige nomes de coluna específicos — reconhece pelo sentido — mas ' +
+      'precisa que os campos existam.')));
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'O caminho é o arquivo <b>lamina_fi</b> da CVM: ela obriga todo gestor a publicar a lâmina em formato ' +
+      'padronizado e republica tudo como tabela, <b>semanalmente</b>, com histórico desde 2019. ' +
+      'Uma competência cobre o mercado inteiro — e a partir daí "a lâmina do CNPJ X" é busca local, sem rede. ' +
+      'Abra <b>🌐 Fontes públicas</b> e procure por <b>lâmina</b>.')));
+    body.appendChild(botaoFonte('cvm-fi-lamina'));
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: 'a base carregada não é uma lâmina' };
+  }
+
+  function semAlvo(body, ds, det, question, plan) {
+    const n = new Set(ds.rows.map((r) => LA.soDigito(r[det.cnpjCol.key]))).size;
+    head(body, 'Qual fundo?', 'a base tem ' + n + ' fundo(s) com lâmina');
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Reconheci a base como lâmina, mas a pergunta não disse de qual fundo. Diga o <b>CNPJ</b> ' +
+      '(<code>lâmina do 00.000.000/0001-91</code>) ou um pedaço do <b>nome</b> ' +
+      '(<code>lâmina do fundo Alfa Renda Fixa</code>).')));
+    if (det.temCusto) {
+      body.appendChild(U().insightNode(ins('good', '✓',
+        'Sem escolher um fundo, esta base também responde perguntas de mercado: ' +
+        '<code>taxa de administração média por classe</code>, <code>fundos com a maior taxa</code>, ' +
+        '<code>distribuição da taxa de administração</code> — são ' + n + ' fundos de uma vez.')));
+    }
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: 'diga o CNPJ ou o nome do fundo' };
+  }
+
+  function naoAchou(body, ds, det, alvo, achado, question, plan) {
+    const n = new Set(ds.rows.map((r) => LA.soDigito(r[det.cnpjCol.key]))).size;
+    head(body, 'Não achei esse fundo na base', AG.esc(achado.motivo || ''));
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      'Procurei por <b>' + AG.esc(alvo.termo) + '</b> entre os <b>' + n + '</b> fundos da base carregada e não ' +
+      'encontrei. Três motivos possíveis, em ordem de probabilidade: a competência carregada é anterior à ' +
+      'existência do fundo; o fundo não é obrigado a publicar lâmina (fundos exclusivos e alguns ' +
+      'estruturados não são); ou o CNPJ é o da <b>classe</b> e a base está por <b>fundo</b>, o que passou a ' +
+      'ser uma distinção real depois da Resolução CVM 175.')));
+    if (alvo.tipo === 'nome' && det.nomeCol) {
+      const chave = AG.norm(alvo.termo).split(' ')[0];
+      const perto = Array.from(new Set(ds.rows
+        .map((r) => String(r[det.nomeCol.key] || ''))
+        .filter((x) => x && AG.norm(x).indexOf(chave) >= 0))).slice(0, 8);
+      if (perto.length) {
+        body.appendChild(U().insightNode(ins('info', 'ⓘ',
+          'Estes têm <b>' + AG.esc(chave) + '</b> no nome: ' +
+          perto.map((x) => '<code>' + AG.esc(x) + '</code>').join(', ') + '.')));
+      }
+    }
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: 'fundo não encontrado na base carregada' };
+  }
+
+  function varios(body, ds, det, alvo, achado, question, plan) {
+    head(body, achado.fundos.length + ' fundos casam com “' + alvo.termo + '”', 'escolha um');
+    const td = {
+      columns: [{ key: 'nome', label: 'Fundo' }, { key: 'cnpj', label: 'CNPJ' },
+        { key: 'classe', label: 'Classe' }, { key: 'adm', label: 'Taxa de adm.', format: 'percent' }],
+      rows: achado.fundos.slice(0, 40).map((r) => ({
+        nome: det.nomeCol ? String(r[det.nomeCol.key] || '') : '—',
+        cnpj: cnpjFmt(r[det.cnpjCol.key]),
+        classe: det.conceitos.classe ? String(r[det.conceitos.classe.col.key] || '') : '—',
+        adm: det.conceitos.taxaAdm ? LA.pct(r[det.conceitos.taxaAdm.col.key]) : null
+      }))
+    };
+    const c = charts.card({
+      title: 'Qual deles?',
+      subtitle: 'repita a pergunta com o CNPJ para abrir a lâmina completa de um',
+      tableData: td
+    });
+    c.body.appendChild(charts.dataTable(td));
+    body.appendChild(c.wrap);
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Não escolhi por você: nome de fundo repete muito — a mesma família costuma ter versões ' +
+      'com taxas diferentes por faixa de aplicação, e abrir a errada dá um número plausível e errado.')));
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: achado.fundos.length + ' fundos casam com o nome' };
+  }
+
+  function botaoFonte(id) {
+    const row = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
+    row.appendChild(el('button', {
+      class: 'btn sm primary', text: '🌐 Abrir a ficha da fonte da CVM',
+      onclick: () => {
+        const f = (AG.fontes.FONTES || []).find((x) => x.id === id);
+        if (f && AG.fontesUI && AG.fontesUI.detalhe) AG.fontesUI.detalhe(f);
+        else if (AG.fontesUI) AG.fontesUI.abrirFontes();
+      }
+    }));
+    return row;
+  }
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, n) {
+    body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: ds.rows.length, rowsMatched: n, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+
+  AG.laminaUI = { alvoDaPergunta, atalhos, cnpjFmt, REPOSITORIOS };
 })();
 
 </script>
