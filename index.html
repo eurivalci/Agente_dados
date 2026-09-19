@@ -426,7 +426,7 @@ svg.chart text { font-family: var(--font); }
 .tooltip .tt-row b { color: var(--text-primary); font-variant-numeric: tabular-nums; margin-left: auto; padding-left: 14px; }
 
 /* ---------- tabela ---------- */
-.tbl-wrap { overflow: auto; max-height: 460px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.tbl-wrap { overflow: auto; min-width: 0; max-width: 100%; max-height: 460px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.tbl th {
   position: sticky; top: 0; z-index: 2; background: var(--surface-3);
@@ -510,15 +510,24 @@ pre.plan-body .n { color: #c98500; }
 @media (max-width: 900px) { .view-cell { grid-column: span 12 !important; } }
 
 /* ---------- modal ---------- */
+/* `grid-template-columns: minmax(0,1fr)` e `min-width:0` no modal existem por
+   um motivo concreto: sem eles, o min-content do conteúdo (a tabela da prévia
+   de "Testar agora", com 3.453 px de largura natural) atravessa os ancestrais
+   e infla o TRACK do grid. O modal continua com 880 px e passa a ser
+   centralizado dentro de um track de 2.223 px — ou seja, some para a direita.
+   A tabela já rolava sozinha; o que faltava era impedir que a largura dela
+   contasse para o layout de fora. */
 .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.68); z-index: 100;
-  display: grid; place-items: center; padding: 24px; backdrop-filter: blur(3px);
+  display: grid; grid-template-columns: minmax(0, 1fr); place-items: center;
+  padding: 24px; backdrop-filter: blur(3px); overflow: hidden;
 }
 .overlay[hidden] { display: none !important; }
 .modal {
   background: var(--surface-1); border: 1px solid var(--border-strong);
   border-radius: 14px; box-shadow: var(--shadow);
-  width: min(880px, 100%); max-height: 86vh; display: flex; flex-direction: column;
+  width: min(880px, 100%); max-width: 100%; min-width: 0;
+  max-height: 86vh; display: flex; flex-direction: column;
 }
 .modal-head {
   padding: 15px 18px; border-bottom: 1px solid var(--border);
@@ -529,7 +538,7 @@ pre.plan-body .n { color: #c98500; }
 .modal-head .voltar:hover { color: var(--series-1); }
 .modal-estreita { width: min(620px, 100%) !important; }
 .modal-head .spacer { flex: 1; }
-.modal-body { padding: 18px; overflow-y: auto; }
+.modal-body { padding: 18px; overflow-y: auto; overflow-x: hidden; min-width: 0; }
 .modal-foot { padding: 13px 18px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
 
 label.fld { display: block; margin-bottom: 13px; }
@@ -20001,6 +20010,17 @@ const RECEITAS_ARQUIVO = [
     }));
     cx.appendChild(acoes);
     out.appendChild(cx);
+    trazAVista(out);
+  }
+
+  /* O resultado nasce no fim de uma ficha longa: sem isto, clicar em "Testar
+     agora" parece não fazer nada, porque a resposta apareceu fora da área
+     visível. Rola o corpo da janela até ela — não a página, que não se move. */
+  function trazAVista(no) {
+    if (!no || !no.scrollIntoView) return;
+    setTimeout(() => {
+      try { no.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { void e; }
+    }, 40);
   }
 
   function aviso(nivel, html) {
