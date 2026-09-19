@@ -2608,6 +2608,36 @@ AG.colorFor = function (key, index) {
     return msg === null ? null : (msg || 'a fonte respondeu que não encontrou o que foi pedido');
   }
 
+  /**
+   * Desce por invólucros de chave única até achar a lista.
+   *
+   * A guarda que impede isto de estragar tudo: **um objeto com campo escalar
+   * próprio é um REGISTRO e a descida para ali**. `{cnpj, razao_social, qsa:[…]}`
+   * tem campos escalares, então não desce — continua sendo uma empresa que
+   * contém sócios, não um envelope de sócios. Sem essa guarda, a regra comeria
+   * justamente o caso que o módulo existe para proteger.
+   */
+  function descerEnvelope(o) {
+    let atual = o;
+    const caminho = [];
+    for (let d = 0; d < 6 && ehObj(atual); d++) {
+      const chaves = Object.keys(atual).filter((k) => !META.test(norm(k)));
+      const escalares = chaves.filter((k) => !ehObj(atual[k]) && !Array.isArray(atual[k]));
+      if (escalares.length) return null;                 // tem dado próprio: é registro
+      const dentro = chaves.filter((k) => ehObj(atual[k]) || Array.isArray(atual[k]));
+      if (dentro.length !== 1) return null;              // bifurcou: não se escolhe por sorteio
+      const k = dentro[0];
+      caminho.push(k);
+      if (Array.isArray(atual[k])) {
+        return listaDeRegistros(atual[k])
+          ? { linhas: atual[k], caminho: caminho.join('.') }
+          : null;
+      }
+      atual = atual[k];
+    }
+    return null;
+  }
+
   /** Objeto cujos campos são todos de transporte — envelope, nunca registro. */
   function soMetadados(o) {
     for (const k in o) {
@@ -2670,7 +2700,15 @@ AG.colorFor = function (key, index) {
         return { linhas: j[cands[0]], forma: 'envelope', caminho: cands[0], listas: [] };
       }
     }
-    /* 4. recusa da própria API com HTTP 200 */
+    /* 4. envelope ENCADEADO de chave única — o padrão do JSON traduzido de XML.
+          O Senado devolve ListaParlamentarEmExercicio → Parlamentares →
+          Parlamentar: [...]. Nenhum desses nomes é conhecido de antemão, e
+          nunca vão ser: cada serviço inventa os seus. O que dá para reconhecer
+          é a FORMA — invólucros que só existem para embrulhar o de dentro. */
+    const desc = descerEnvelope(j);
+    if (desc) return { linhas: desc.linhas, forma: 'envelope', caminho: desc.caminho, listas: [] };
+
+    /* 5. recusa da própria API com HTTP 200 */
     const rec = recusaDaAPI(j);
     if (rec !== null) return { linhas: null, forma: 'recusa', caminho: null, listas: [], erro: rec };
 
@@ -4174,15 +4212,19 @@ const FONTES = [
   params:[],
   formato:"JSON com hierarquia PROFUNDA (ListaParlamentarEmExercicio → Parlamentares → Parlamentar)", periodicidade:"Contínua",
   cobertura:"Brasil — Senado Federal",
-  auditoria:"NÃO auditada no navegador a partir deste ambiente. ARMADILHA DE FORMATO: a resposta é um JSON traduzido de XML, com três níveis de envelope antes da lista. O agente reconhece envelope aninhado até dois níveis — se a tabela não sair, baixe o JSON e arraste, que o achatamento resolve.",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. DUAS ARMADILHAS, ambas tratadas: (1) o Senado responde em XML por padrão — é o `.json` no caminho, ou `formato=json` na query, que troca isso, e sem ele a tela fica vazia; (2) a resposta é um JSON traduzido de XML, com três níveis de invólucro antes da lista (ListaParlamentarEmExercicio → Parlamentares → Parlamentar). O agente desce por invólucros de chave única até achar a lista, então a tabela sai completa.",
   doc:"https://legis.senado.leg.br/dadosabertos/docs/",
   chave:["senado","senador","materia","tramitacao","comissao","legislativo"],
   rotas:[
     R({ id:"senadores", nome:"Senadores em exercício", quando:"você quer a composição atual", devolve:"lista",
-        base:"https://legis.senado.leg.br/dadosabertos/senador/lista/atual.json", params:[] }),
+        base:"https://legis.senado.leg.br/dadosabertos/senador/lista/atual.json", params:[],
+        nota:"O `.json` no fim do caminho é o que troca XML por JSON. A lista sai três níveis abaixo (ListaParlamentarEmExercicio → Parlamentares → Parlamentar), e o agente desce sozinho até ela.",
+        produz:["CodigoParlamentar","NomeParlamentar","SiglaPartidoParlamentar","UfParlamentar"] }),
     R({ id:"materias", nome:"Matérias por ano e sigla", quando:"você procura uma proposição do Senado", devolve:"lista",
-        base:"https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano=2024&sigla=PL&v=6",
-        params:[P("ano","2024",false,"AAAA"),P("sigla","PL",false,"PL, PEC, PLP…")] })
+        base:"https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano=2024&sigla=PL&formato=json",
+        params:[P("ano","2024",false,"AAAA"),P("sigla","PL",false,"tipo da proposição: PL, PEC, PLP — NÃO é a UF"),
+                P("formato","json",true,"sem isto o Senado responde em XML")],
+        nota:"O Senado responde em XML por padrão; o parâmetro formato=json é obrigatório aqui. A lista sai três níveis abaixo (PesquisaBasicaMateria → Materias → Materia), e o agente desce sozinho até ela." })
   ]
 },
 {
@@ -19810,6 +19852,30 @@ const RECEITAS_ARQUIVO = [
 
       // resposta não-JSON: tenta como texto delimitado (CSV/TSV vindo de API)
       if (j === null) {
+        /* XML tem de ser reconhecido ANTES da tentativa de CSV. Vários serviços
+           brasileiros respondem XML por padrão e só mandam JSON quando pedido —
+           o Senado é o caso clássico. Empurrar isso para o leitor de CSV produz
+           uma tabela de lixo ou uma tela vazia, e o usuário fica sem saber que o
+           conserto é um parâmetro na URL. */
+        if (/^\s*(<\?xml|<!DOCTYPE|<[a-zA-Z])/.test(txt.slice(0, 200))) {
+          out.appendChild(aviso('warn',
+            'A resposta veio em <b>XML</b>, não em JSON — o agente lê JSON e texto delimitado. ' +
+            'Quase sempre o conserto é um parâmetro: acrescente <code>formato=json</code> à chamada, ' +
+            'ou <code>.json</code> ao fim do caminho, e teste de novo. ' +
+            'Se a fonte só publica XML, abra a URL numa aba e salve o arquivo.'));
+          out.appendChild(el('pre', { class: 'plan-body', text: txt.slice(0, 1200) }));
+          const b = el('div', { class: 'btn-row', style: { marginTop: '8px' } });
+          b.appendChild(el('button', {
+            class: 'btn sm', text: 'Tentar com formato=json',
+            onclick: () => {
+              const u2 = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'formato=json';
+              chamar(f, u2, out, botao, cfg);
+            }
+          }));
+          b.appendChild(el('button', { class: 'btn sm ghost', text: 'Abrir numa aba', onclick: () => window.open(url, '_blank', 'noopener') }));
+          out.appendChild(b);
+          return;
+        }
         const arq = new File([new Blob([txt], { type: 'text/csv' })], AG.slug(nome).slice(0, 40) + '.csv', { type: 'text/csv' });
         const antes = AG.APP.datasets.length;
         await AG.handleFiles([arq]);
