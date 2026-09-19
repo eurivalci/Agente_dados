@@ -634,7 +634,7 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
           <button class="btn sm ghost" id="btn-demo">Dados de demonstração</button>
         </div>
         <div class="hint" style="margin-top:6px">
-          82 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
+          101 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
         </div>
       </div>
 
@@ -3863,7 +3863,7 @@ const FONTES = [
   chave:["finbra","contas anuais","arrecadacao","receita orcamentaria","despesa por funcao","iss","iptu","comparar municipios","estados"] },
 
 { id:"siops", nome:"SIOPS — orçamento público em saúde", org:"Ministério da Saúde / DATASUS",
-  dom:"setorial", acesso:"painel", gran:"municipio", peso:78,
+  dom:"fiscal", acesso:"painel", gran:"municipio", peso:78,
   desc:"Receitas e despesas em saúde declaradas por estados e municípios, com o percentual mínimo constitucional aplicado (15% para município, 12% para estado). É a fonte para o indicador de aplicação mínima em saúde — que, junto com o de educação, decide parecer prévio de conta.",
   base:"https://siops.datasus.gov.br/",
   formato:"Consulta em tela, com exportação por município e exercício",
@@ -3874,7 +3874,7 @@ const FONTES = [
   chave:["siops","saude","minimo constitucional","15%","aplicacao em saude","despesa com saude"] },
 
 { id:"siope", nome:"SIOPE — orçamento público em educação", org:"FNDE / MEC",
-  dom:"setorial", acesso:"painel", gran:"municipio", peso:76,
+  dom:"fiscal", acesso:"painel", gran:"municipio", peso:76,
   desc:"O par do SIOPS para educação: receitas de impostos e despesas em manutenção e desenvolvimento do ensino, com o percentual mínimo de 25%. Traz também a aplicação dos recursos do FUNDEB e o percentual em remuneração dos profissionais do magistério.",
   base:"https://www.fnde.gov.br/siope/",
   formato:"Consulta em tela, com relatórios por ente",
@@ -3931,7 +3931,7 @@ const FONTES = [
   chave:["tcu","acordao","obra parada","irregularidade","fiscalizacao","paralisada"] },
 
 { id:"fns-fundo", nome:"Fundo Nacional de Saúde — repasses fundo a fundo", org:"Ministério da Saúde",
-  dom:"setorial", acesso:"painel", gran:"municipio", peso:72,
+  dom:"fiscal", acesso:"painel", gran:"municipio", peso:72,
   desc:"Pagamentos do FNS a estados e municípios por bloco de financiamento, componente e competência. É a contrapartida da receita de transferência da saúde que aparece no RREO — e a forma de conferir se o que foi declarado como recebido bate com o que foi repassado.",
   base:"https://portalfns.saude.gov.br/consultar-pagamentos/",
   formato:"Consulta em tela com exportação por competência",
@@ -3959,7 +3959,7 @@ const FONTES = [
    daqui: o portal de download e o painel de consulta entram como tais,
    porque isso é verificável pela natureza da fonte; a API que existe entra
    como `naoaud` e é auditada pelo primeiro clique em "Testar agora". -- */
-{ id:"cvm-fi-diario", nome:"CVM — Informe diário de fundos (cota e patrimônio)", org:"CVM", dom:"setorial",
+{ id:"cvm-fi-diario", nome:"CVM — Informe diário de fundos (cota e patrimônio)", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", core:true, peso:94,
   desc:"A base canônica para comparar fundos de investimento no Brasil: uma linha por fundo por dia útil, com CNPJ, valor da cota, patrimônio líquido, captação, resgate e número de cotistas. A cota já vem líquida de taxa de administração — o que se compara é o que o cotista recebeu. Traga para o agente e pergunte \"comparar os fundos contra o CDI\".",
   base:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
@@ -3970,7 +3970,7 @@ const FONTES = [
   doc:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
   chave:["cvm","fundo","fundos","cota","valor da cota","patrimonio liquido","cotistas","informe diario","captacao","resgate","comparar fundos","investimento"] },
 
-{ id:"cvm-fi-cad", nome:"CVM — Cadastro de fundos (nome, classe, gestor, taxa)", org:"CVM", dom:"setorial",
+{ id:"cvm-fi-cad", nome:"CVM — Cadastro de fundos (nome, classe, gestor, taxa)", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", core:true, peso:90,
   desc:"O de-para do CNPJ: denominação social, classe, situação cadastral, data de início, administrador, gestor, auditor, público-alvo, taxa de administração e taxa de performance. É o que transforma um ranking de catorze dígitos num ranking legível — e o que permite perguntar se a taxa de administração explica o retorno entregue.",
   base:"https://dados.cvm.gov.br/dataset/fi-cad",
@@ -3982,7 +3982,7 @@ const FONTES = [
   equivale:"cvm-fi-diario",
   chave:["cvm","cadastro","fundo","gestor","administrador","taxa de administracao","taxa de performance","classe","cnpj do fundo","situacao cadastral"] },
 
-{ id:"cvm-fi-perfil", nome:"CVM — Perfil mensal dos fundos", org:"CVM", dom:"setorial",
+{ id:"cvm-fi-perfil", nome:"CVM — Perfil mensal dos fundos", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", peso:74,
   desc:"O que o fundo tem por dentro, mês a mês: composição por tipo de ativo, posições em derivativos, exposição a crédito privado, concentração por emissor e uso de alavancagem. É a fonte para perguntar se dois fundos com retorno parecido correm o mesmo risco.",
   base:"https://dados.cvm.gov.br/dataset/fi-doc-perfil_mensal",
@@ -3994,7 +3994,7 @@ const FONTES = [
   equivale:"cvm-fi-diario",
   chave:["cvm","perfil","carteira do fundo","derivativo","credito privado","alavancagem","concentracao","emissor","risco do fundo"] },
 
-{ id:"cvm-dfp", nome:"CVM — DFP e ITR de companhias abertas", org:"CVM", dom:"setorial",
+{ id:"cvm-dfp", nome:"CVM — DFP e ITR de companhias abertas", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", peso:82,
   desc:"Demonstrações financeiras padronizadas (anual) e informações trimestrais de todas as companhias abertas: balanço patrimonial ativo e passivo, demonstração de resultado, DRE consolidada e individual. Com as contas em colunas, o agente responde margem, liquidez, endividamento, alavancagem e ROE.",
   base:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
@@ -4005,7 +4005,7 @@ const FONTES = [
   doc:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
   chave:["cvm","dfp","itr","demonstracao financeira","balanco","dre","companhia aberta","margem","liquidez","endividamento","roe","fundamentalista"] },
 
-{ id:"cvm-cia-cad", nome:"CVM — Cadastro de companhias abertas", org:"CVM", dom:"setorial",
+{ id:"cvm-cia-cad", nome:"CVM — Cadastro de companhias abertas", org:"CVM", dom:"mercado",
   acesso:"file", gran:"empresa", peso:66,
   desc:"CNPJ, denominação social e comercial, setor de atividade, situação do registro, data de registro, código CVM e município da sede. É o de-para que liga a DFP ao papel negociado na bolsa.",
   base:"https://dados.cvm.gov.br/dataset/cia_aberta-cad",
@@ -4017,7 +4017,7 @@ const FONTES = [
   equivale:"cvm-dfp",
   chave:["cvm","companhia aberta","cadastro","setor","codigo cvm","registro","emissor"] },
 
-{ id:"cvm-ckan", nome:"CVM — API do portal de dados abertos (CKAN)", org:"CVM", dom:"setorial",
+{ id:"cvm-ckan", nome:"CVM — API do portal de dados abertos (CKAN)", org:"CVM", dom:"mercado",
   acesso:"naoaud", gran:"catalogo", peso:62,
   desc:"O portal da CVM roda CKAN, que expõe API padrão para listar conjuntos, descrever recursos e localizar o arquivo de cada competência sem navegar pela página. Serve para descobrir o caminho certo antes de baixar.",
   base:"https://dados.cvm.gov.br/api/3/action/package_list",
@@ -4028,7 +4028,7 @@ const FONTES = [
   doc:"https://dados.cvm.gov.br/",
   chave:["cvm","ckan","api","catalogo","dados abertos","package","recurso"] },
 
-{ id:"anbima-indices", nome:"ANBIMA — Índices de referência (IMA, IRF-M, IHFA, IDkA)", org:"ANBIMA", dom:"setorial",
+{ id:"anbima-indices", nome:"ANBIMA — Índices de referência (IMA, IRF-M, IHFA, IDkA)", org:"ANBIMA", dom:"mercado",
   acesso:"file", gran:"variavel", core:true, peso:80,
   desc:"Os benchmarks que fazem sentido para renda fixa brasileira: IMA-B (títulos indexados ao IPCA), IRF-M (prefixados), IMA-Geral, IDkA (duração constante) e IHFA (multimercados). Comparar um fundo de renda fixa longa contra o CDI é comparar contra o benchmark errado — a diferença aparece como habilidade e é só duração.",
   base:"https://www.anbima.com.br/pt_br/informar/",
@@ -4039,7 +4039,7 @@ const FONTES = [
   doc:"https://www.anbima.com.br/pt_br/informar/",
   chave:["anbima","indice","ima","ima-b","irf-m","ihfa","idka","benchmark","renda fixa","duracao","referencia"] },
 
-{ id:"anbima-data", nome:"ANBIMA Data — portal de informações de mercado", org:"ANBIMA", dom:"setorial",
+{ id:"anbima-data", nome:"ANBIMA Data — portal de informações de mercado", org:"ANBIMA", dom:"mercado",
   acesso:"painel", gran:"catalogo", peso:64,
   desc:"Portal com estatísticas da indústria de fundos (patrimônio, captação líquida e número de fundos por classe), curvas de juros, debêntures e precificação de ativos. Boa referência de mercado, mas é tela de consulta: o dado bruto sai por download pontual.",
   base:"https://data.anbima.com.br/",
@@ -4051,7 +4051,7 @@ const FONTES = [
   equivale:"anbima-indices",
   chave:["anbima","fundos","patrimonio","captacao liquida","classificacao anbima","debenture","curva de juros","mercado de capitais"] },
 
-{ id:"anbima-api", nome:"ANBIMA — API de dados (exige credencial)", org:"ANBIMA", dom:"setorial",
+{ id:"anbima-api", nome:"ANBIMA — API de dados (exige credencial)", org:"ANBIMA", dom:"mercado",
   acesso:"key", gran:"variavel", peso:58,
   desc:"API oficial com índices, curvas, precificação de títulos públicos e privados e dados da indústria de fundos. Exige credencial de associado ou cadastrado, com client id e secret.",
   base:"https://developers.anbima.com.br/",
@@ -4063,7 +4063,7 @@ const FONTES = [
   equivale:"anbima-indices",
   chave:["anbima","api","credencial","oauth","precificacao","curva","titulo publico"] },
 
-{ id:"b3-cotahist", nome:"B3 — Séries históricas do mercado à vista (COTAHIST)", org:"B3", dom:"setorial",
+{ id:"b3-cotahist", nome:"B3 — Séries históricas do mercado à vista (COTAHIST)", org:"B3", dom:"mercado",
   acesso:"file", gran:"empresa", core:true, peso:86,
   desc:"Histórico anual de todos os papéis negociados: abertura, mínimo, máximo, médio, fechamento, melhor oferta de compra e venda, volume e quantidade. É a base para retorno, volatilidade, drawdown e beta de qualquer ação ou FII listado.",
   base:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
@@ -4074,7 +4074,7 @@ const FONTES = [
   doc:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
   chave:["b3","bolsa","cotahist","cotacao","acao","acoes","papel","fechamento","serie historica","mercado a vista","fii","ticker"] },
 
-{ id:"b3-indices", nome:"B3 — Índices e carteiras teóricas (Ibovespa, IFIX, SMLL)", org:"B3", dom:"setorial",
+{ id:"b3-indices", nome:"B3 — Índices e carteiras teóricas (Ibovespa, IFIX, SMLL)", org:"B3", dom:"mercado",
   acesso:"painel", gran:"variavel", peso:72,
   desc:"Composição e peso de cada papel nas carteiras teóricas dos índices, com a metodologia e as prévias de rebalanceamento. Serve de benchmark para beta e para checar se a concentração de um índice explica o desempenho de um fundo que o segue.",
   base:"https://www.b3.com.br/pt_br/market-data-e-indices/indices/",
@@ -4086,7 +4086,7 @@ const FONTES = [
   equivale:"b3-cotahist",
   chave:["b3","ibovespa","ifix","smll","ibrx","idiv","indice","carteira teorica","peso","benchmark","rebalanceamento"] },
 
-{ id:"b3-fundos-listados", nome:"B3 — Fundos listados (FIIs, ETFs, Fiagro, FIP)", org:"B3", dom:"setorial",
+{ id:"b3-fundos-listados", nome:"B3 — Fundos listados (FIIs, ETFs, Fiagro, FIP)", org:"B3", dom:"mercado",
   acesso:"painel", gran:"empresa", peso:68,
   desc:"Relação dos fundos negociados em bolsa com código de negociação, administrador, segmento, número de cotistas e patrimônio. É a ponte entre o CNPJ da CVM e o ticker que aparece na corretora.",
   base:"https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/",
@@ -4096,7 +4096,312 @@ const FONTES = [
   auditoria:"Não auditada no navegador. Página de produtos com listagem por tipo de fundo.",
   doc:"https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/renda-variavel/fundos-de-investimentos/",
   equivale:"cvm-fi-cad",
-  chave:["b3","fii","etf","fiagro","fip","fundo listado","ticker","codigo de negociacao","administrador","segmento"] }
+  chave:["b3","fii","etf","fiagro","fip","fundo listado","ticker","codigo de negociacao","administrador","segmento"] },
+
+/* ---------------- LEGISLATIVO, NORMAS E JUSTIÇA ---------------- */
+{
+  id:"querido-diario", nome:"Querido Diário — diários oficiais municipais", org:"Open Knowledge Brasil", dom:"normas", acesso:"naoaud",
+  gran:"documento", core:true, peso:88,
+  desc:"Busca em TEXTO nos diários oficiais de milhares de municípios, com trecho e link do PDF. É a única fonte que vê a licitação, a homologação e a nomeação antes — ou em vez — do sistema estruturado: município pequeno publica no diário e não publica em API nenhuma.",
+  base:"https://queridodiario.ok.org.br/api/gazettes?territory_ids=2304400&querystring=pregao&size=20&sort_by=descending_date",
+  params:[P("territory_ids","2304400",false,"código IBGE de 7 dígitos, separados por vírgula"),P("querystring","pregao",false,"termo a buscar no texto"),P("published_since","",false,"AAAA-MM-DD"),P("published_until","",false,"AAAA-MM-DD"),P("size","20",false,"até 100")],
+  formato:"JSON (envelope {total_gazettes, gazettes:[…]})", periodicidade:"Diária, conforme a publicação de cada município",
+  cobertura:"Milhares de municípios brasileiros — a cobertura varia por cidade e por período",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Projeto aberto e mantido pela comunidade, sem SLA institucional. Confira a cobertura do seu município antes de concluir ausência: diário não indexado não significa ato inexistente — significa que este acervo não o tem.",
+  doc:"https://queridodiario.ok.org.br/api/docs",
+  chave:["diario oficial","diario","publicacao","pregao","homologacao","extrato","licitacao","municipio","texto","ato"],
+  rotas:[
+    R({ id:"busca", nome:"Buscar texto nos diários", quando:"você quer achar um termo — um CNPJ, um nome, 'pregão' — nos diários", devolve:"lista",
+        base:"https://queridodiario.ok.org.br/api/gazettes?territory_ids=2304400&querystring=pregao&size=20&sort_by=descending_date",
+        params:[P("territory_ids","2304400",false,"código IBGE"),P("querystring","pregao",false,"termo no texto"),P("published_since","",false,"AAAA-MM-DD"),P("published_until","",false,"AAAA-MM-DD"),P("size","20",false,"até 100")],
+        nota:"Sem `querystring` devolve os diários do período, sem filtrar por texto. O campo `excerpts` traz os trechos que casaram — é o que se lê antes de abrir o PDF.",
+        produz:["territory_id","date","url","territory_name"] }),
+    R({ id:"cidades", nome:"Municípios cobertos", quando:"você quer saber se uma cidade está no acervo antes de buscar", devolve:"lista",
+        base:"https://queridodiario.ok.org.br/api/cities?city_name=Fortaleza",
+        params:[P("city_name","Fortaleza",false,"nome, parcial serve")],
+        produz:["territory_id","territory_name","state_code"] }),
+    R({ id:"cidade", nome:"Uma cidade pelo código IBGE", quando:"você tem o código e quer o nível de cobertura dela", devolve:"registro",
+        base:"https://queridodiario.ok.org.br/api/cities/2304400",
+        params:[P("territory_id","2304400",true,"código IBGE de 7 dígitos")],
+        produz:["territory_id","territory_name","state_code","level"] })
+  ]
+},
+{
+  id:"camara-deputados", nome:"Câmara dos Deputados — Dados Abertos", org:"Câmara dos Deputados", dom:"normas", acesso:"naoaud",
+  gran:"parlamentar", core:true, peso:84,
+  desc:"Deputados, despesas da cota parlamentar (com CNPJ do fornecedor), proposições, votações, órgãos e frentes. A despesa de gabinete traz o documento fiscal item a item — é dado de compra pública com nome e CNPJ.",
+  base:"https://dadosabertos.camara.leg.br/api/v2/deputados?siglaUf=CE&ordem=ASC&ordenarPor=nome&itens=100",
+  params:[P("siglaUf","CE",false,"sigla da UF"),P("itens","100",false,"até 100 por página"),P("pagina","1",false,"")],
+  formato:"JSON (envelope {dados:[…], links:[…]})", periodicidade:"Contínua",
+  cobertura:"Brasil — legislaturas desde 1934, com detalhe crescente a partir de 2000",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. API REST estável e versionada (v2); o envelope `dados` é reconhecido pelo agente. Paginação por `pagina`/`itens` com teto de 100 por página — base grande exige várias chamadas.",
+  doc:"https://dadosabertos.camara.leg.br/swagger/api.html",
+  chave:["camara","deputado","parlamentar","emenda","cota parlamentar","despesa de gabinete","proposicao","votacao","projeto de lei","legislativo"],
+  rotas:[
+    R({ id:"deputados", nome:"Deputados por UF", quando:"você quer a bancada de um estado", devolve:"lista",
+        base:"https://dadosabertos.camara.leg.br/api/v2/deputados?siglaUf=CE&ordem=ASC&ordenarPor=nome&itens=100",
+        params:[P("siglaUf","CE",false,"sigla da UF"),P("siglaPartido","",false,"sigla do partido"),P("itens","100",false,"")],
+        produz:["id","nome","siglaPartido","siglaUf"] }),
+    R({ id:"despesas", nome:"Despesas de um deputado", quando:"você tem o id do deputado e quer a cota parlamentar dele", devolve:"lista",
+        base:"https://dadosabertos.camara.leg.br/api/v2/deputados/204554/despesas?ano=2024&itens=100&ordem=DESC&ordenarPor=dataDocumento",
+        params:[P("id","204554",true,"id do deputado"),P("ano","2024",false,"AAAA"),P("mes","",false,"1 a 12"),P("itens","100",false,"")],
+        nota:"Traz CNPJ do fornecedor, valor e número do documento — cruza com o cadastro de CNPJ e com as sanções.",
+        produz:["cnpjCpfFornecedor","nomeFornecedor","valorLiquido","dataDocumento"] }),
+    R({ id:"proposicoes", nome:"Proposições", quando:"você procura projetos de lei por tipo, ano ou tema", devolve:"lista",
+        base:"https://dadosabertos.camara.leg.br/api/v2/proposicoes?siglaTipo=PL&ano=2024&itens=100&ordem=DESC&ordenarPor=id",
+        params:[P("siglaTipo","PL",false,"PL, PEC, PDL, MPV…"),P("ano","2024",false,"AAAA"),P("keywords","",false,"palavras-chave"),P("itens","100",false,"")],
+        produz:["id","siglaTipo","numero","ano","ementa"] }),
+    R({ id:"votacoes", nome:"Votações", quando:"você quer as votações de um período", devolve:"lista",
+        base:"https://dadosabertos.camara.leg.br/api/v2/votacoes?dataInicio=2024-01-01&dataFim=2024-01-31&itens=100&ordem=DESC&ordenarPor=dataHoraRegistro",
+        params:[P("dataInicio","2024-01-01",false,"AAAA-MM-DD"),P("dataFim","2024-01-31",false,"AAAA-MM-DD"),P("itens","100",false,"")],
+        produz:["id","data","siglaOrgao","descricao"] })
+  ]
+},
+{
+  id:"senado-dados", nome:"Senado Federal — Dados Abertos", org:"Senado Federal", dom:"normas", acesso:"naoaud",
+  gran:"parlamentar", peso:66,
+  desc:"Senadores em exercício, matérias legislativas, comissões e votações. Complementa a Câmara para acompanhar a tramitação completa de uma proposição.",
+  base:"https://legis.senado.leg.br/dadosabertos/senador/lista/atual.json",
+  params:[],
+  formato:"JSON com hierarquia PROFUNDA (ListaParlamentarEmExercicio → Parlamentares → Parlamentar)", periodicidade:"Contínua",
+  cobertura:"Brasil — Senado Federal",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. ARMADILHA DE FORMATO: a resposta é um JSON traduzido de XML, com três níveis de envelope antes da lista. O agente reconhece envelope aninhado até dois níveis — se a tabela não sair, baixe o JSON e arraste, que o achatamento resolve.",
+  doc:"https://legis.senado.leg.br/dadosabertos/docs/",
+  chave:["senado","senador","materia","tramitacao","comissao","legislativo"],
+  rotas:[
+    R({ id:"senadores", nome:"Senadores em exercício", quando:"você quer a composição atual", devolve:"lista",
+        base:"https://legis.senado.leg.br/dadosabertos/senador/lista/atual.json", params:[] }),
+    R({ id:"materias", nome:"Matérias por ano e sigla", quando:"você procura uma proposição do Senado", devolve:"lista",
+        base:"https://legis.senado.leg.br/dadosabertos/materia/pesquisa/lista?ano=2024&sigla=PL&v=6",
+        params:[P("ano","2024",false,"AAAA"),P("sigla","PL",false,"PL, PEC, PLP…")] })
+  ]
+},
+{
+  id:"cnj-datajud", nome:"CNJ — DataJud (API Pública)", org:"Conselho Nacional de Justiça", dom:"normas", acesso:"key",
+  gran:"processo", peso:78,
+  desc:"Metadados processuais de todos os tribunais do país: classe, assunto, órgão julgador, movimentos e datas. É a base de qualquer análise de execução fiscal, precatório ou litígio em volume.",
+  base:"https://api-publica.datajud.cnj.jus.br/api_publica_tjce/_search",
+  params:[P("chave-api","",true,"chave PÚBLICA divulgada pelo CNJ na própria documentação")],
+  formato:"JSON (Elasticsearch: hits.hits[]._source)", periodicidade:"Mensal (carga do CNJ)",
+  cobertura:"Brasil — um índice por tribunal (api_publica_tjce, api_publica_trf5, …)",
+  auditoria:"NÃO auditada no navegador. LIMITAÇÃO REAL DO AGENTE: esta API exige POST com corpo Elasticsearch e cabeçalho Authorization, e o agente só faz GET sem cabeçalho. A ficha está aqui pela documentação e pelo endereço; a consulta em si é feita fora (Postman, curl, script) e o resultado entra como arquivo. Para número de processo use o formato CNJ sem pontuação.",
+  doc:"https://datajud-wiki.cnj.jus.br/api-publica/",
+  chave:["processo","judicial","tribunal","datajud","cnj","execucao fiscal","precatorio","litigio","vara"]
+},
+{
+  id:"cnj-numeros", nome:"CNJ — Justiça em Números (bases abertas)", org:"Conselho Nacional de Justiça", dom:"normas", acesso:"file",
+  gran:"instituicao", peso:62,
+  desc:"Produtividade, acervo, tempo de tramitação e despesa de cada tribunal, por ano. É o retrato macro que contextualiza qualquer análise processual.",
+  base:"https://www.cnj.jus.br/pesquisas-judiciarias/justica-em-numeros/",
+  params:[],
+  formato:"XLSX e CSV por edição anual", periodicidade:"Anual",
+  cobertura:"Brasil — todos os ramos da Justiça",
+  auditoria:"Portal de download, sem API. Não há o que auditar por requisição.",
+  doc:"https://www.cnj.jus.br/pesquisas-judiciarias/justica-em-numeros/",
+  equivale:"cnj-datajud",
+  chave:["justica em numeros","tribunal","produtividade","acervo","congestionamento","cnj"]
+},
+
+/* ---------------- CADASTROS, SANÇÕES E CLASSIFICAÇÃO ---------------- */
+{
+  id:"ibge-cnae", nome:"IBGE — CNAE (classificação de atividades)", org:"IBGE", dom:"cadastros", acesso:"naoaud",
+  gran:"catalogo", core:true, peso:74,
+  desc:"Resolve o código de atividade econômica em descrição, com a hierarquia seção → divisão → grupo → classe → subclasse. É a tabela que dá sentido ao campo `cnae_fiscal` de qualquer consulta de CNPJ.",
+  base:"https://servicodados.ibge.gov.br/api/v2/cnae/classes",
+  params:[],
+  formato:"JSON (array)", periodicidade:"Por revisão da CNAE (rara)",
+  cobertura:"CNAE 2.3 — todas as classes e subclasses",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Mesmo host de servicodados.ibge.gov.br, que respondeu com CORS liberado na auditoria de 05/09/2026 em outras rotas — mas este caminho específico não foi testado, e por isso o selo é honesto.",
+  doc:"https://servicodados.ibge.gov.br/api/docs/cnae",
+  chave:["cnae","atividade economica","classificacao","ramo","setor","subclasse","codigo de atividade"],
+  rotas:[
+    R({ id:"classes", nome:"Todas as classes", quando:"você quer a tabela inteira para cruzar", devolve:"lista",
+        base:"https://servicodados.ibge.gov.br/api/v2/cnae/classes", params:[],
+        produz:["id","descricao"] }),
+    R({ id:"classe", nome:"Uma classe pelo código", quando:"você tem o código e quer a descrição", devolve:"registro",
+        base:"https://servicodados.ibge.gov.br/api/v2/cnae/classes/6422100",
+        params:[P("codigo","6422100",true,"código da classe, com ou sem pontuação")] }),
+    R({ id:"subclasses", nome:"Subclasses", quando:"você precisa do nível mais fino (7 dígitos)", devolve:"lista",
+        base:"https://servicodados.ibge.gov.br/api/v2/cnae/subclasses", params:[] }),
+    R({ id:"secoes", nome:"Seções", quando:"você quer o agrupamento mais grosso, para gráfico", devolve:"lista",
+        base:"https://servicodados.ibge.gov.br/api/v2/cnae/secoes", params:[] })
+  ]
+},
+{
+  id:"cnep", nome:"CNEP — empresas punidas (Lei Anticorrupção)", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"key",
+  gran:"empresa", peso:70,
+  desc:"Cadastro Nacional de Empresas Punidas: sanções da Lei 12.846 com órgão sancionador, fundamentação e vigência. Junto do CEIS, fecha a checagem de idoneidade de um fornecedor.",
+  base:"https://api.portaldatransparencia.gov.br/api-de-dados/cnep?pagina=1",
+  params:[P("pagina","1",false,""),P("chave-api-dados","",true,"credencial própria, no cabeçalho")],
+  formato:"JSON (array)", periodicidade:"Contínua",
+  cobertura:"Brasil",
+  auditoria:"Exige credencial no cabeçalho, e o agente não guarda credencial. O caminho suportado é o arquivo — o Portal publica a mesma base em CSV, sem chave.",
+  doc:"https://api.portaldatransparencia.gov.br/swagger-ui.html",
+  equivale:"sancoes-arquivo",
+  chave:["cnep","empresa punida","lei anticorrupcao","sancao","idoneidade","fornecedor"]
+},
+{
+  id:"cepim", nome:"CEPIM — entidades sem fins lucrativos impedidas", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"key",
+  gran:"empresa", peso:52,
+  desc:"Entidades privadas sem fins lucrativos impedidas de celebrar convênio, contrato de repasse ou termo de parceria com a União. É a checagem que falta quando o contratado é uma OSC.",
+  base:"https://api.portaldatransparencia.gov.br/api-de-dados/cepim?pagina=1",
+  params:[P("pagina","1",false,""),P("chave-api-dados","",true,"credencial própria, no cabeçalho")],
+  formato:"JSON (array)", periodicidade:"Contínua",
+  cobertura:"Brasil",
+  auditoria:"Exige credencial no cabeçalho. Mesma base disponível em CSV, sem chave, no portal de download.",
+  doc:"https://api.portaldatransparencia.gov.br/swagger-ui.html",
+  equivale:"sancoes-arquivo",
+  chave:["cepim","osc","entidade","convenio","impedida","terceiro setor"]
+},
+{
+  id:"sancoes-arquivo", nome:"Sanções (CEIS, CNEP, CEPIM, acordos) — arquivos CSV", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"file",
+  gran:"empresa", core:true, peso:76,
+  desc:"As mesmas bases de sanção da API, em CSV mensal e SEM chave de API. É o caminho que funciona de dentro de um arquivo offline: baixe, arraste, cruze pelo CNPJ.",
+  base:"https://portaldatransparencia.gov.br/download-de-dados/ceis",
+  params:[],
+  formato:"ZIP com CSV (separador ponto-e-vírgula, codificação Latin-1 em alguns arquivos)", periodicidade:"Diária/mensal conforme a base",
+  cobertura:"Brasil",
+  auditoria:"Portal de download, sem API e sem chave. Não há o que auditar por requisição. ATENÇÃO à codificação: vários CSVs da CGU vêm em Latin-1 — se aparecerem caracteres trocados, converta para UTF-8 antes de arrastar.",
+  doc:"https://portaldatransparencia.gov.br/download-de-dados",
+  chave:["ceis","cnep","cepim","sancao","inidoneo","impedido","suspenso","fornecedor","due diligence","csv"]
+},
+{
+  id:"brasilapi-ncm", nome:"BrasilAPI — NCM (nomenclatura de mercadorias)", org:"Comunidade / BrasilAPI", dom:"cadastros", acesso:"naoaud",
+  gran:"catalogo", peso:44,
+  desc:"Busca o código NCM por texto ou traz a descrição de um código. É o vocabulário de produto que aparece em nota fiscal, licitação e comércio exterior.",
+  base:"https://brasilapi.com.br/api/ncm/v1?search=arroz",
+  params:[P("search","arroz",false,"texto livre")],
+  formato:"JSON (array)", periodicidade:"Por revisão da NCM",
+  cobertura:"Brasil",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Serviço mantido pela comunidade — sem SLA institucional.",
+  doc:"https://brasilapi.com.br/docs#tag/NCM",
+  chave:["ncm","mercadoria","produto","nomenclatura","nota fiscal","comercio exterior","classificacao fiscal"],
+  rotas:[
+    R({ id:"busca", nome:"Buscar por texto", quando:"você tem o nome do produto e quer o código", devolve:"lista",
+        base:"https://brasilapi.com.br/api/ncm/v1?search=arroz", params:[P("search","arroz",false,"texto livre")] }),
+    R({ id:"codigo", nome:"Por código NCM", quando:"você tem o código e quer a descrição", devolve:"registro",
+        base:"https://brasilapi.com.br/api/ncm/v1/10063021", params:[P("codigo","10063021",true,"8 dígitos")] }),
+    R({ id:"todos", nome:"Todos os NCM", quando:"você quer a tabela inteira para cruzar", devolve:"lista",
+        base:"https://brasilapi.com.br/api/ncm/v1", params:[],
+        nota:"Resposta grande: prefira a busca quando souber o produto." })
+  ]
+},
+
+/* ---------------- COMÉRCIO EXTERIOR ---------------- */
+{
+  id:"comexstat", nome:"Comex Stat — balança comercial (município e NCM)", org:"MDIC / Secex", dom:"cadastros", acesso:"file",
+  gran:"municipio", core:true, peso:72,
+  desc:"Exportação e importação por NCM, país, via, UF e MUNICÍPIO, mês a mês desde 1997. Responde 'o que esta cidade vende para fora' — pergunta que nenhuma base fiscal responde.",
+  base:"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/",
+  params:[],
+  formato:"CSV grande (um arquivo por ano; o de município é EXP_{ano}_MUN.csv / IMP_{ano}_MUN.csv)", periodicidade:"Mensal",
+  cobertura:"Brasil — 1997 em diante",
+  auditoria:"Portal de download. A API existe (api.comexstat.mdic.gov.br) mas exige POST com corpo JSON, e o agente só faz GET — por isso o caminho suportado é o arquivo. Os CSV anuais completos passam de 100 MB: prefira os arquivos por município, bem menores.",
+  doc:"https://comexstat.mdic.gov.br/pt/home",
+  chave:["comex","exportacao","importacao","balanca comercial","ncm","municipio","comercio exterior","secex"]
+},
+
+/* ---------------- SAÚDE: PREÇO E MEDICAMENTO ---------------- */
+{
+  id:"bps-saude", nome:"BPS — Banco de Preços em Saúde", org:"Ministério da Saúde", dom:"compras", acesso:"painel",
+  gran:"licitacao", peso:68,
+  desc:"Preço efetivamente PAGO por órgãos públicos em medicamentos e produtos de saúde, com fornecedor, quantidade e data. É o que permite dizer se a prefeitura pagou caro — não apenas quanto pagou.",
+  base:"https://bps.saude.gov.br/login.jsf",
+  params:[],
+  formato:"Consulta em tela, com exportação", periodicidade:"Contínua",
+  cobertura:"Brasil — compras públicas de saúde declaradas ao BPS",
+  auditoria:"Painel de consulta com exportação; não publica API aberta. Cobertura depende de o órgão ter declarado a compra — ausência no BPS não significa ausência de compra.",
+  doc:"https://bps.saude.gov.br/",
+  chave:["banco de precos","saude","medicamento","preco pago","compra publica","insumo","sobrepreco"]
+},
+{
+  id:"cmed-anvisa", nome:"CMED/ANVISA — preço máximo de medicamentos", org:"ANVISA", dom:"compras", acesso:"file",
+  gran:"catalogo", peso:66,
+  desc:"Tabela oficial de preços máximos: PMVG (preço máximo de venda ao governo) e PMC (ao consumidor), por apresentação e alíquota de ICMS. É o teto legal contra o qual se mede qualquer compra pública de medicamento.",
+  base:"https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos",
+  params:[],
+  formato:"XLS/XLSX mensal, com cabeçalho de várias linhas antes da tabela", periodicidade:"Mensal",
+  cobertura:"Brasil — medicamentos com preço regulado",
+  auditoria:"Portal de download, sem API. ARMADILHA DE FORMATO: a planilha da CMED traz várias linhas de cabeçalho e notas antes da tabela real — o agente detecta o início dos dados, mas confira a primeira linha lida antes de somar. O PMVG já considera a desoneração de ICMS e é a coluna certa para comparar com compra pública.",
+  doc:"https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed",
+  chave:["cmed","anvisa","medicamento","preco maximo","pmvg","pmc","teto","farmaco","icms"]
+},
+
+/* ---------------- VEICULAR E AMBIENTAL ---------------- */
+{
+  id:"senatran-frota", nome:"SENATRAN — frota de veículos por município", org:"Ministério dos Transportes / SENATRAN", dom:"cadastros", acesso:"file",
+  gran:"municipio", peso:64,
+  desc:"Frota por município, tipo de veículo, combustível e ano-modelo, mês a mês. Dá o denominador de qualquer análise de trânsito, seguro, licenciamento ou mercado automotivo local.",
+  base:"https://www.gov.br/transportes/pt-br/assuntos/transito/conteudo-Senatran/estatisticas-frota-de-veiculos-senatran",
+  params:[],
+  formato:"XLSX mensal, uma aba por recorte", periodicidade:"Mensal",
+  cobertura:"Brasil — todos os municípios",
+  auditoria:"Portal de download, sem API. Os arquivos mudam de layout entre anos: confira os nomes de coluna ao empilhar séries de exercícios diferentes.",
+  doc:"https://www.gov.br/transportes/pt-br/assuntos/transito/conteudo-Senatran/estatisticas-frota-de-veiculos-senatran",
+  chave:["frota","veiculo","carro","moto","senatran","denatran","transito","licenciamento","municipio"]
+},
+{
+  id:"ibama-embargos", nome:"IBAMA — autos de infração e áreas embargadas", org:"IBAMA", dom:"cadastros", acesso:"naoaud",
+  gran:"empresa", peso:60,
+  desc:"Autos de infração ambiental e áreas embargadas com CPF/CNPJ do autuado, valor da multa e município. Fecha a due diligence de fornecedor pelo lado ambiental, que o CEIS não cobre.",
+  base:"https://dadosabertos.ibama.gov.br/api/3/action/package_search?q=embargo&rows=20",
+  params:[P("q","embargo",false,"termo de busca no acervo"),P("rows","20",false,"quantos resultados")],
+  formato:"JSON (padrão CKAN: success/result/results)", periodicidade:"Contínua",
+  cobertura:"Brasil",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Portal CKAN: a busca devolve os METADADOS dos conjuntos, e o dado em si está nos CSV listados em `resources` — este é um índice, não a tabela.",
+  doc:"https://dadosabertos.ibama.gov.br/",
+  chave:["ibama","ambiental","embargo","auto de infracao","multa","desmatamento","licenciamento","due diligence"]
+},
+
+/* ---------------- CEARÁ: ESTADO, CAPITAL E CONTROLE EXTERNO ---------------- */
+{
+  id:"dados-ce", nome:"Ceará — Portal de Dados Abertos do Estado", org:"Governo do Ceará", dom:"cadastros", acesso:"naoaud",
+  gran:"catalogo", peso:58,
+  desc:"Acervo CKAN do estado: educação, segurança, saúde, receita estadual, servidores e obras. É a porta de entrada para o dado estadual que não existe em base federal.",
+  base:"https://dados.ce.gov.br/api/3/action/package_search?q=&rows=20",
+  params:[P("q","",false,"termo de busca"),P("rows","20",false,"quantos resultados")],
+  formato:"JSON (padrão CKAN)", periodicidade:"Varia por conjunto",
+  cobertura:"Ceará",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Como todo CKAN, a busca devolve metadados; o dado está nos `resources` de cada pacote.",
+  doc:"https://dados.ce.gov.br/",
+  chave:["ceara","estado","dados abertos","ckan","estadual","fortaleza","governo do ceara"]
+},
+{
+  id:"dados-fortaleza", nome:"Fortaleza — Portal de Dados Abertos do Município", org:"Prefeitura de Fortaleza", dom:"cadastros", acesso:"naoaud",
+  gran:"catalogo", peso:56,
+  desc:"Acervo municipal de Fortaleza: mobilidade, saúde, educação, licitações, IPTU e equipamentos públicos. Dado municipal de verdade, não agregado federal.",
+  base:"https://dados.fortaleza.ce.gov.br/api/3/action/package_search?q=&rows=20",
+  params:[P("q","",false,"termo de busca"),P("rows","20",false,"quantos resultados")],
+  formato:"JSON (padrão CKAN)", periodicidade:"Varia por conjunto",
+  cobertura:"Fortaleza/CE",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Acervo municipal: a atualização varia muito por conjunto — confira a data do recurso antes de concluir tendência.",
+  doc:"https://dados.fortaleza.ce.gov.br/",
+  chave:["fortaleza","municipio","prefeitura","dados abertos","ckan","iptu","mobilidade","ceara"]
+},
+{
+  id:"ipece", nome:"IPECE — indicadores econômicos e sociais do Ceará", org:"IPECE", dom:"cadastros", acesso:"painel",
+  gran:"municipio", peso:54,
+  desc:"PIB municipal, IDM (Índice de Desenvolvimento Municipal), perfil básico dos 184 municípios e séries econômicas estaduais. É o equivalente estadual do que o IBGE faz para o país.",
+  base:"https://www.ipece.ce.gov.br/",
+  params:[],
+  formato:"XLSX, PDF e painéis por tema", periodicidade:"Anual, com boletins intermediários",
+  cobertura:"Ceará — 184 municípios",
+  auditoria:"Portal de publicações e painéis, sem API aberta. O IDM é índice próprio do IPECE: não confunda com o IFGF da Firjan nem com a CAPAG do Tesouro — as três medem coisas diferentes.",
+  doc:"https://www.ipece.ce.gov.br/",
+  chave:["ipece","ceara","idm","pib municipal","perfil basico","indicador","estadual"]
+},
+{
+  id:"tce-ce", nome:"TCE-CE — controle externo e contas municipais", org:"Tribunal de Contas do Estado do Ceará", dom:"fiscal", acesso:"painel",
+  gran:"municipio", peso:62,
+  desc:"Prestação de contas, acórdãos, licitações e o acervo do antigo TCM-CE. Desde 2017 o TCE-CE fiscaliza também TODOS os municípios cearenses — o Tribunal de Contas dos Municípios foi extinto e incorporado a ele.",
+  base:"https://www.tce.ce.gov.br/transparencia",
+  params:[],
+  formato:"Consulta em tela, com exportação por módulo", periodicidade:"Contínua",
+  cobertura:"Ceará — estado e 184 municípios",
+  auditoria:"Portal de consulta, sem API aberta documentada. ATENÇÃO HISTÓRICA: o TCM-CE foi extinto em 2017 (EC estadual 92/2017) e suas competências passaram ao TCE-CE — buscar 'TCM-CE' para exercícios recentes não devolve nada porque o órgão não existe mais, não porque o dado falta.",
+  doc:"https://www.tce.ce.gov.br/",
+  chave:["tce","tribunal de contas","ceara","tcm","prestacao de contas","acordao","controle externo","municipio"]
+}
 ];
 
 const RECEITAS = [
@@ -4166,7 +4471,13 @@ const DOMINIOS = {
   territorio:{ rot:"Território e demografia" },
   fiscal:{ rot:"Fiscal e contábil" },
   compras:{ rot:"Compras e contratos" },
-  cadastros:{ rot:"Setoriais e cadastros" }
+  cadastros:{ rot:"Setoriais e cadastros" },
+  /* Mercado de capitais ganhou domínio próprio: quem procura fundo, cota ou
+     índice não procura no mesmo lugar que quem procura RREO. As 15 fontes que
+     usavam um `setorial` inexistente ficavam sem botão no filtro e mostravam
+     o código cru na ficha técnica. */
+  mercado:{ rot:"Mercado e capitais" },
+  normas:{ rot:"Legislativo, normas e justiça" }
 };
 
 const ACESSOS = {
@@ -4187,7 +4498,8 @@ const GRANS = {
   municipio:"Município", uf:"UF", regiao:"Região", setor:"Setor censitário",
   contrato:"Contrato", licitacao:"Licitação", empresa:"Empresa",
   instituicao:"Instituição", variavel:"Série/variável",
-  endereco:"Endereço", catalogo:"Catálogo"
+  endereco:"Endereço", catalogo:"Catálogo",
+  documento:"Documento publicado", parlamentar:"Parlamentar", processo:"Processo judicial"
 };
 /* ============================================================
    RECEITAS DE ARQUIVO — CAMADA FINANCEIRA
@@ -11547,9 +11859,12 @@ const RECEITAS_ARQUIVO = [
     /* `ente` é o CÓDIGO; `cidade` é o NOME. São papéis diferentes porque há
        rota que recebe um e rota que recebe o outro, e trocá-los devolve
        "município não encontrado" com cara de fonte fora do ar. */
-    ['ente', /^(id_ente|localidade|cod_ibge|codigo_ibge|cod_municipio|n6|ibge)$/],
-    ['cidade', /^(cidade|city|municipio|nome_municipio|ente)$/],
-    ['uf', /^(uf|sigla_uf|sigla|state|n3)$/],
+    ['ente', /^(id_ente|localidade|cod_ibge|codigo_ibge|cod_municipio|n6|ibge|territory_id|territory_ids)$/],
+    ['cidade', /^(cidade|city|municipio|nome_municipio|ente|city_name)$/],
+    /* `sigla` sozinho NÃO é UF. No Senado, `sigla` é o tipo da proposição
+       (PL, PEC, PLP) — e o agente estava mandando "CE" nesse campo, o que
+       devolve uma lista vazia com toda a aparência de "não há matérias". */
+    ['uf', /^(uf|sigla_uf|siglauf|uf_sigla|state|n3)$/],
     ['logradouro', /^(logradouro|street|rua|endereco|via)$/],
     ['ddd', /^ddd$/],
     ['lat', /^(lat|latitude)$/],
@@ -11813,14 +12128,25 @@ const RECEITAS_ARQUIVO = [
     'analise analisar resumo panorama evolucao serie historico ultimo ultima primeiro primeira ' +
     'top ranking ordenar filtrar agrupar contar somar').split(' '));
 
-  /** Fontes vivas que a frase está pedindo, da mais provável para a menos. */
-  function candidatas(pergunta) {
+  /* Quem pode responder a uma requisição do navegador: as auditadas como
+     liberadas E as que entraram sem auditoria — estas podem responder, só não
+     foram testadas, e o primeiro clique do usuário é que dirá. Deixar `naoaud`
+     de fora fazia fonte nova nascer invisível para o agente. */
+  const CONSULTAVEL = { live: 1, naoaud: 1 };
+  const SO_ARQUIVO = { file: 1, painel: 1, block: 1, key: 1 };
+
+  /**
+   * Fontes que a frase está pedindo, da mais provável para a menos.
+   * @param tipos  mapa de `acesso` aceitos; por padrão, as consultáveis
+   */
+  function candidatas(pergunta, tipos) {
+    const aceita = tipos || CONSULTAVEL;
     const n = norm(pergunta);
     const termos = n.split(' ').filter((t) => t.length >= 3 && !GENERICO.has(t) && !/^\d+$/.test(t));
     if (!termos.length) return [];
     const out = [];
     for (const f of F().FONTES) {
-      if (f.acesso !== 'live') continue;
+      if (!aceita[f.acesso]) continue;
       const nome = norm(f.nome + ' ' + f.org);
       const chaves = (f.chave || []).map(norm);
       let forte = 0, fraco = 0;
@@ -11907,7 +12233,7 @@ const RECEITAS_ARQUIVO = [
        Nominatim procurar "qual o cep da" pelo mundo. */
     daFrase.texto = ent.logradouro
       ? (ent.logradouro + (municipio ? ', ' + municipio.nome + ' - ' + municipio.uf : ''))
-      : null;
+      : (ent.termoBusca || null);
 
     for (const p of (r.params || [])) {
       const papel = papelDe(p.n);
@@ -11942,7 +12268,7 @@ const RECEITAS_ARQUIVO = [
       }
       valores[p.n] = valor;
       campos.push({
-        n: p.n, valor: valor, papel: papel, origem: origem,
+        n: p.n, valor: valor, papel: papel, origem: origem, json: !!obj,
         rotOrigem: ORIGEM[origem], hint: p.hint || '', req: !!p.req
       });
     }
@@ -11971,10 +12297,43 @@ const RECEITAS_ARQUIVO = [
     return daFrase >= 1 || !(opts && opts.temBase);
   }
 
+  /* A fonte existe e é a certa, mas não responde por requisição: é download ou
+     painel. Dizer "não achei" seria mentira; mandar consultar seria pior. A
+     resposta certa é a ficha com o caminho — e é o caso da maioria das bases
+     brasileiras que importam (SENATRAN, CMED, Comex Stat, sanções em CSV). */
+  function soArquivo(pergunta, opts) {
+    const cands = candidatas(pergunta, SO_ARQUIVO);
+    if (!cands.length) return null;
+    const ent = entidades(pergunta);
+    const temAlgo = ent.ano !== null || ent.municipios.length || ent.uf || ent.datas ||
+      ent.cep || ent.cnpj || ent.ddd;
+    if (!temAlgo && opts && opts.temBase) return null;
+    return { fonte: cands[0], alternativas: cands.slice(1, 4), entidades: ent, soArquivo: true };
+  }
+
+  /* Fontes de busca livre (CKAN, Querido Diário) têm um campo de texto, e o
+     que se procura nelas é justamente a palavra que fez a fonte ser escolhida.
+     "pregão no diário de Sobral" tem o município no filtro e "pregão" no texto
+     — mandar a frase inteira faria o acervo procurar por "no" e "de". */
+  function termoDeBusca(pergunta) {
+    const n = norm(pergunta);
+    const fora = new Set(['diario', 'diarios', 'oficial', 'oficiais', 'dados', 'abertos',
+      'portal', 'acervo', 'base', 'fonte', 'api', 'consulta', 'buscar', 'busca']);
+    const t = n.split(' ').filter((w) => w.length >= 4 && !GENERICO.has(w) && !fora.has(w) && !/^\d+$/.test(w));
+    /* tira o que já virou município ou UF, que entram noutro campo */
+    const ent = entidades(pergunta);
+    const usados = new Set();
+    for (const m of ent.municipios) norm(m.termo).split(' ').forEach((w) => usados.add(w));
+    if (ent.uf) norm(ent.uf.nome).split(' ').forEach((w) => usados.add(w));
+    const limpos = t.filter((w) => !usados.has(w));
+    return limpos.length ? limpos.slice(0, 3).join(' ') : null;
+  }
+
   function resolver(pergunta, contexto, opts) {
     const cands = candidatas(pergunta);
     if (!cands.length) return null;
     const ent = entidades(pergunta);
+    ent.termoBusca = termoDeBusca(pergunta);
     /* Empata pela fonte do contexto: "e em 2023?" continua na mesma fonte. */
     if (contexto && contexto.fonteId) {
       const i = cands.findIndex((f) => f.id === contexto.fonteId);
@@ -11999,12 +12358,25 @@ const RECEITAS_ARQUIVO = [
           const c = m.campos.find((x) => x.n === p.n);
           return c && c.origem === 'frase';
         }).length;
+        /* O campo de texto é preenchido, mas NÃO conta como evidência de que a
+           frase pediu uma consulta: toda frase tem texto. Contá-lo fazia
+           qualquer portal CKAN casar com "média de despesa por município" —
+           o falso positivo de sempre, agora pela porta do campo de busca.
+           O que conta é ter DE QUEM, DE QUANDO ou DE ONDE. */
+        const daFraseN = m.campos.filter((c) =>
+          /* `q={"uf":"CE"}` tem papel de texto e é filtro ESTRUTURADO: conta.
+             `q=pregao` é busca livre: não conta. */
+          c.origem === 'frase' && (c.papel !== 'texto' || c.json)).length;
         avaliadas.push({
           fonte: f, rota: r, m: m, ordem: i * 100 + j,
-          daFrase: m.campos.filter((c) => c.origem === 'frase').length,
+          daFrase: daFraseN,
           /* Rota cujos obrigatórios a frase preenche vence a que só casa em
-             campo opcional: preencher `limit` não é ter o que buscar. */
-          cobre: req.length ? reqCheios / req.length : 0
+             campo opcional: preencher `limit` não é ter o que buscar.
+             Rota SEM obrigatórios não é pior por isso — é o caso das buscas
+             livres, onde todo campo é filtro. Penalizá-la fazia "pregão no
+             diário de Sobral" cair na ficha de cobertura do município em vez
+             da busca por texto, que é o que foi pedido. */
+          cobre: req.length ? reqCheios / req.length : (daFraseN > 0 ? 1 : 0)
         });
       });
     });
@@ -12072,6 +12444,11 @@ const RECEITAS_ARQUIVO = [
    * tela — foi assim que "RREO de Fortaleza em 2022" passou pela continuação
    * e nunca chegou a comparar com a base carregada.
    */
+  /* `soArquivo` NÃO entra aqui. Fonte de download é o último recurso, e quem
+     decide que se chegou ao último recurso é o agente, depois de tentar
+     responder pela base carregada — não este módulo, que não vê a base.
+     Com `soArquivo` embutido aqui, "valor por fornecedor em 2024" virava uma
+     oferta da base de sanções: "fornecedor" casa, "2024" é entidade, e pronto. */
   function paraPergunta(pergunta, contexto, opts) {
     return continuar(pergunta, contexto) || resolver(pergunta, contexto, opts);
   }
@@ -12119,7 +12496,7 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.pedidoFonte = {
-    entidades, candidatas, montar, resolver, continuar, paraPergunta, rotasDe, buscaVazia,
+    entidades, candidatas, montar, resolver, continuar, paraPergunta, rotasDe, buscaVazia, soArquivo,
     vale, papelDe, jsonDe, ORIGEM
   };
 })();
@@ -12952,6 +13329,9 @@ const RECEITAS_ARQUIVO = [
     }
 
     if (!APP.datasets.length) {
+      /* Com a tela vazia, uma fonte de download ainda é uma resposta melhor
+         que "arraste um arquivo": diz QUAL arquivo arrastar. */
+      if (ofereceArquivo(body, question)) return;
       body.appendChild(el('div', { class: 'headline', text: 'Ainda não há dados carregados' }));
       body.appendChild(el('div', { class: 'subline', html: 'Arraste arquivos CSV, XLSX, JSON, PDF, DOCX ou TXT para o painel à esquerda. Tudo é processado localmente, sem sair da sua máquina.' }));
       return;
@@ -12977,6 +13357,7 @@ const RECEITAS_ARQUIVO = [
       if (hits.length) { renderDocAnswer(body, question, hits); return; }
     }
     if (plan.intent === 'none' || !plan.dsId) {
+      if (ofereceArquivo(body, question)) return;
       renderFailure(body, question, plan, 'Não identifiquei uma fonte tabular para responder.');
       return;
     }
@@ -12989,6 +13370,7 @@ const RECEITAS_ARQUIVO = [
        vem acompanhada da ressalva e das leituras alternativas (uncertainStrip).
        Recusar aqui só acontece quando realmente não há o que calcular. */
     if (plan.runnable === false) {
+      if (ofereceArquivo(body, question)) return;
       renderFailure(body, question, plan, plan.notRunnable ||
         'Não encontrei nesta fonte os elementos necessários para calcular isso.');
       return;
@@ -13001,6 +13383,20 @@ const RECEITAS_ARQUIVO = [
     }
     dispatch(body, ds, plan, question);
     if (ofertaPendente) anexaOferta(body, ofertaPendente, question);
+  }
+
+  /* Fonte pública que só existe como download ou painel. É o ÚLTIMO recurso:
+     só chega aqui quem o motor não conseguiu responder pela base carregada.
+     Fosse consultada antes, "valor por fornecedor em 2024" viraria oferta da
+     base de sanções — "fornecedor" casa, "2024" é entidade, e a pergunta era
+     sobre a planilha que está na tela. */
+  function ofereceArquivo(body, question) {
+    if (!AG.pedidoFonte || !AG.pedidoUI) return false;
+    const ped = AG.pedidoFonte.soArquivo(question, { temBase: !!APP.datasets.length });
+    if (!ped) return false;
+    APP.ultimoPlano = { question: question, intent: 'arquivo', dimensions: [], filters: [], notes: [] };
+    AG.pedidoUI.render(body, ped, question, {});
+    return true;
   }
 
   /** Quais parâmetros que a FRASE pediu divergem do que a base carregada tem. */
@@ -22318,7 +22714,60 @@ const RECEITAS_ARQUIVO = [
   /* =========================================================
      A RESPOSTA INTEIRA
      ========================================================= */
+  /* A fonte existe, é a certa, e não responde por requisição. Dizer "não achei"
+     seria mentira; mandar consultar seria pior. A resposta é a ficha com o
+     caminho — e vale lembrar que a maioria das bases brasileiras que importam
+     (SENATRAN, CMED, Comex Stat, sanções em CSV) está nessa categoria. */
+  function renderArquivo(body, pedido, question) {
+    const f = pedido.fonte;
+    const a = (AG.fontes.ACESSOS || {})[f.acesso] || {};
+    body.appendChild(el('div', { class: 'headline', text: f.nome }));
+    body.appendChild(el('div', {
+      class: 'subline',
+      html: 'Esta fonte responde à sua pergunta, mas <b>não por requisição do navegador</b> (' +
+        AG.esc(a.curto || a.rot || f.acesso) + '). O caminho é baixar na origem e arrastar para o painel à esquerda.'
+    }));
+    const cx = el('div', { class: 'res-chamada', style: { marginTop: '10px' } });
+    cx.appendChild(el('div', { class: 'fonte-desc', text: f.desc }));
+    const ficha = [['Formato', f.formato], ['Atualização', f.periodicidade], ['Cobertura', f.cobertura]]
+      .filter((x) => x[1]);
+    const dl = el('dl', { class: 'ficha' });
+    for (const [k, v] of ficha) { dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: String(v) })); }
+    cx.appendChild(dl);
+    if (f.auditoria) {
+      cx.appendChild(U().insightNode(ins('info', 'ⓘ', '<b>O que saber antes de baixar:</b> ' + AG.esc(f.auditoria))));
+    }
+    const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px', flexWrap: 'wrap' } });
+    acoes.appendChild(el('button', {
+      class: 'btn sm primary', text: 'Abrir a origem',
+      onclick: () => window.open(f.base, '_blank', 'noopener')
+    }));
+    acoes.appendChild(el('button', {
+      class: 'btn sm', text: 'Ficha completa', onclick: () => AG.fontesUI.detalhe(f)
+    }));
+    if (f.doc) {
+      acoes.appendChild(el('button', {
+        class: 'btn sm ghost', text: 'Documentação', onclick: () => window.open(f.doc, '_blank', 'noopener')
+      }));
+    }
+    cx.appendChild(acoes);
+    body.appendChild(cx);
+
+    if (pedido.alternativas && pedido.alternativas.length) {
+      const linha = el('div', { class: 'btn-row', style: { marginTop: '8px', flexWrap: 'wrap' } });
+      linha.appendChild(el('span', { class: 'hint', text: 'Não era esta? ' }));
+      for (const alt of pedido.alternativas) {
+        const b = el('button', { class: 'btn sm ghost', text: alt.nome.split(' — ')[0], title: alt.nome });
+        b.addEventListener('click', () => AG.fontesUI.detalhe(alt));
+        linha.appendChild(b);
+      }
+      body.appendChild(linha);
+    }
+    void question;
+  }
+
   function render(body, pedido, question, opts) {
+    if (pedido.soArquivo) { renderArquivo(body, pedido, question); return; }
     const o = opts || {};
     body.appendChild(el('div', {
       class: 'headline',
@@ -22526,7 +22975,7 @@ const RECEITAS_ARQUIVO = [
   };
 
   AG.pedidoUI = {
-    render, cartaoPedido, nomeDaBase, ofereceEncadear, valoresUteis,
+    render, renderArquivo, cartaoPedido, nomeDaBase, ofereceEncadear, valoresUteis,
     rotasQueAceitam, renderBusca
   };
 })();
