@@ -566,6 +566,18 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
 }
 .pill.sel { border-color: var(--series-1); background: #16283f; color: #fff; }
 
+/* Cada eixo de filtro numa linha com o nome à esquerda: sem isso, dezesseis
+   pastilhas seguidas viram uma parede em que ninguém distingue "por assunto"
+   de "por forma de acesso". O `min-width: 0` no lado das pastilhas é a mesma
+   precaução que segurou o modal no lugar — conteúdo interno de flex item não
+   encolhe sozinho. */
+.filtro-linha { display: flex; align-items: flex-start; gap: 8px; margin: 5px 0; }
+.filtro-rot {
+  flex: 0 0 60px; font-size: 10.5px; font-weight: 640; letter-spacing: .03em;
+  color: var(--text-secondary); text-transform: uppercase; padding-top: 10px;
+}
+.filtro-linha .pill-row { flex: 1 1 auto; min-width: 0; margin-top: 4px; }
+
 .toast {
   position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(14px);
   background: #101010; border: 1px solid var(--border-strong); border-radius: 9px;
@@ -3473,7 +3485,7 @@ const FONTES = [
 
 /* ---------------- CADASTROS E SETORIAIS ---------------- */
 {
-  id:"minhareceita", nome:"Minha Receita — CNPJ completo", org:"Serenata / dados da RFB", dom:"cadastros", acesso:"live",
+  id:"minhareceita", nome:"Minha Receita — CNPJ completo", org:"Serenata / dados da RFB", dom:"empresas", acesso:"live",
   gran:"empresa", core:true, peso:82,
   desc:"Consulta de CNPJ sobre a base pública da Receita Federal: razão social, situação cadastral, CNAE, endereço com código do município e o quadro societário completo.",
   base:"https://minhareceita.org/00000000000191",
@@ -3485,7 +3497,7 @@ const FONTES = [
   chave:["cnpj","empresa","socio","qsa","cnae","receita federal","fornecedor"]
 },
 {
-  id:"cnpjws", nome:"CNPJ.ws — consulta pública", org:"CNPJ.ws", dom:"cadastros", acesso:"live",
+  id:"cnpjws", nome:"CNPJ.ws — consulta pública", org:"CNPJ.ws", dom:"empresas", acesso:"live",
   gran:"empresa", peso:52,
   desc:"Segunda via para consulta de CNPJ, com capital social e responsável federativo. Vale como redundância quando a primeira fonte estiver fora do ar.",
   base:"https://publica.cnpj.ws/cnpj/00000000000191",
@@ -3497,7 +3509,7 @@ const FONTES = [
   chave:["cnpj","empresa","capital social","consulta"]
 },
 {
-  id:"ipeadata", nome:"IPEAdata — séries macroeconômicas e regionais", org:"IPEA", dom:"cadastros", acesso:"live",
+  id:"ipeadata", nome:"IPEAdata — séries macroeconômicas e regionais", org:"IPEA", dom:"economia", acesso:"live",
   gran:"variavel", peso:68,
   desc:"Milhares de séries históricas em OData: macroeconomia, indicadores regionais e sociais, muitas com granularidade municipal. Consulte primeiro os Metadados para achar o SERCODIGO da série.",
   base:"https://www.ipeadata.gov.br/api/odata4/Metadados",
@@ -3509,7 +3521,7 @@ const FONTES = [
   chave:["ipea","serie historica","macroeconomia","indicador","odata","regional"]
 },
 {
-  id:"bcb-sgs", nome:"Banco Central — SGS (séries temporais)", org:"Banco Central", dom:"cadastros", acesso:"block",
+  id:"bcb-sgs", nome:"Banco Central — SGS (séries temporais)", org:"Banco Central", dom:"economia", acesso:"block",
   gran:"variavel", peso:56,
   desc:"IPCA, Selic, câmbio, crédito por município e dezenas de milhares de outras séries, cada uma por um código numérico. Referência obrigatória para deflacionar valores fiscais.",
   base:"https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados?formato=json",
@@ -3521,7 +3533,7 @@ const FONTES = [
   chave:["ipca","selic","cambio","inflacao","deflator","serie temporal","bacen","sgs"]
 },
 {
-  id:"bcb-olinda", nome:"Banco Central — Olinda (OData)", org:"Banco Central", dom:"cadastros", acesso:"block",
+  id:"bcb-olinda", nome:"Banco Central — Olinda (OData)", org:"Banco Central", dom:"economia", acesso:"block",
   gran:"variavel", peso:44,
   desc:"Portal OData do BCB: expectativas de mercado do Focus, PTAX, taxas de juros por instituição e cadastro de conglomerados.",
   base:"https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/Moedas?$top=5&$format=json",
@@ -3533,7 +3545,7 @@ const FONTES = [
   chave:["focus","ptax","expectativa","cambio","juros","olinda","odata"]
 },
 {
-  id:"cnes", nome:"CNES — estabelecimentos de saúde", org:"Ministério da Saúde / DATASUS", dom:"cadastros", acesso:"block",
+  id:"cnes", nome:"CNES — estabelecimentos de saúde", org:"Ministério da Saúde / DATASUS", dom:"social", acesso:"block",
   gran:"municipio", peso:58,
   desc:"Cadastro nacional de estabelecimentos de saúde por município: leitos, equipes, profissionais e tipo de unidade. Base para qualquer análise de rede assistencial.",
   base:"https://apidadosabertos.saude.gov.br/cnes/estabelecimentos?limit=20",
@@ -3545,7 +3557,7 @@ const FONTES = [
   chave:["cnes","saude","estabelecimento","leito","hospital","datasus","ubs"]
 },
 {
-  id:"datasus", nome:"DATASUS — bases nacionais (SIH, SIA, SIM, SINASC)", org:"Ministério da Saúde", dom:"cadastros", acesso:"file",
+  id:"datasus", nome:"DATASUS — bases nacionais (SIH, SIA, SIM, SINASC)", org:"Ministério da Saúde", dom:"social", acesso:"file",
   gran:"municipio", peso:50,
   desc:"Internações, produção ambulatorial, mortalidade e nascidos vivos por município. Distribuído em arquivos DBC no FTP público e consultável por TabNet.",
   base:"https://datasus.saude.gov.br/transferencia-de-arquivos/",
@@ -3556,7 +3568,7 @@ const FONTES = [
   chave:["sih","sia","sim","sinasc","internacao","mortalidade","natalidade","saude"]
 },
 {
-  id:"inep", nome:"INEP — Censo Escolar, IDEB, ENEM", org:"INEP / MEC", dom:"cadastros", acesso:"file",
+  id:"inep", nome:"INEP — Censo Escolar, IDEB, ENEM", org:"INEP / MEC", dom:"social", acesso:"file",
   gran:"municipio", peso:57,
   desc:"Microdados educacionais por escola e município: matrículas, docentes, infraestrutura, IDEB e resultados do ENEM. A base para indicadores de educação em painéis municipais.",
   base:"https://www.gov.br/inep/pt-br/acesso-a-informacao/dados-abertos/microdados",
@@ -3567,7 +3579,7 @@ const FONTES = [
   chave:["censo escolar","ideb","enem","escola","matricula","educacao","inep"]
 },
 {
-  id:"cadprev", nome:"CADPREV — RPPS e investimentos previdenciários", org:"Ministério da Previdência", dom:"cadastros", acesso:"block",
+  id:"cadprev", nome:"CADPREV — RPPS e investimentos previdenciários", org:"Ministério da Previdência", dom:"fiscal", acesso:"block",
   gran:"municipio", peso:74,
   desc:"Regimes próprios de previdência dos entes: DAIR com a carteira de investimentos, DIPR, CRP e avaliações atuariais. É a fonte que descreve onde os RPPS municipais aplicam recursos.",
   base:"https://apicadprev.economia.gov.br/v1/entes",
@@ -3575,10 +3587,41 @@ const FONTES = [
   cobertura:"Brasil — entes com RPPS",
   auditoria:"CORS negado em "+AUDIT_DATE+" (TypeError: Failed to fetch). Os extratos DAIR também são publicados em CSV no portal Gov.br da Previdência — caminho recomendado para trazer a carteira para cá.",
   doc:"https://www.gov.br/previdencia/pt-br/assuntos/rpps",
-  chave:["rpps","previdencia","dair","dipr","crp","investimento","carteira","atuarial"]
+  chave:["rpps","previdencia","dair","dipr","crp","investimento","carteira","atuarial"],
+  alternativa:"Para cruzar a carteira do DAIR com o dado fiscal do município, falta uma peça: o DAIR é chaveado pelo CNPJ da UNIDADE GESTORA e o SICONFI pelo ENTE. Quem faz a ponte é a fonte `rpps-cnpj-ug`, logo abaixo."
 },
 {
-  id:"dadosgov", nome:"dados.gov.br — catálogo nacional", org:"Governo Federal", dom:"cadastros", acesso:"key",
+  /* Esta entrada não traz número nenhum: traz a CHAVE que liga dois mundos
+     que hoje não se falam. A carteira de um RPPS (DAIR/CADPREV) é chaveada
+     pelo CNPJ da UNIDADE GESTORA — o fundo previdenciário. O dado fiscal do
+     município (SICONFI, FINBRA, RREO, RGF, CAPAG) é chaveado pelo ENTE.
+     Sem o de-para, "este RPPS aplica bem?" e "este município paga as
+     contas?" continuam sendo duas perguntas que nunca se encontram. */
+  id:"rpps-cnpj-ug", nome:"De-para CNPJ do ente × CNPJ da unidade gestora (RPPS)",
+  org:"Ministério da Previdência — SRPPS", dom:"fiscal", acesso:"naoaud",
+  gran:"instituicao", peso:73,
+  desc:"A tabela que liga o CNPJ do ente federativo ao CNPJ da unidade gestora do RPPS, com UF, nome do ente, regime, natureza jurídica e situação do CNPJ. É a chave de cruzamento entre a carteira do DAIR (por UG) e todo o dado fiscal do município (por ente) — e, de quebra, a lista de quais municípios têm RPPS, quais estão em extinção e quais são só RGPS.",
+  base:"https://www.gov.br/previdencia/pt-br/assuntos/rpps/estatisticas-e-informacoes-dos-rpps/cnpj-ente-cpnj-ug-_atualizado-ate-31-07-2025.csv",
+  params:[], formato:"CSV (;) — UTF-8", periodicidade:"Instantâneo datado; o portal republica com nome novo",
+  cobertura:"Brasil — entes federativos com ou sem RPPS",
+  auditoria:"NÃO auditada no navegador a partir deste ambiente. Conteúdo conferido na origem em 19/09/2026: 8 colunas — CNPJ_UG;UG;CNPJ_ENTE;UF;ENTE;REGIME;NATUREZA JD;Situação. QUATRO ARMADILHAS antes de cruzar. (1) Um ente tem VÁRIAS linhas: Vicentinópolis/GO aparece com um CNPJ Vigente e um Inativo, e cruzar sem filtrar `Situação = CNPJ Vigente` duplica cada linha da base do outro lado — é fan-out, e o agente avisa, mas o número já saiu errado. (2) Em muitos casos CNPJ_UG == CNPJ_ENTE, onde o RPPS nunca teve CNPJ próprio e usou o do município: a chave não é injetora em nenhuma das duas direções. (3) REGIME tem pelo menos quatro valores — RPPS, RGPS, `Extinção RPPS` e não informado — então o arquivo NÃO é a lista de quem tem RPPS: é a lista de todo mundo, e o filtro é seu. (4) Os CNPJ vêm com 14 dígitos, sem pontuação e COM zeros à esquerda; no Excel viram notação científica e perdem o zero. Aqui ficam texto — mas se você editar o arquivo antes de arrastar, perde a chave.",
+  doc:"https://www.gov.br/previdencia/pt-br/assuntos/rpps/estatisticas-e-informacoes-dos-rpps",
+  chave:["rpps","cnpj","unidade gestora","ente","de para","depara","chave","cruzamento","previdencia","cadprev","dair","regime proprio","extincao"],
+  rotas:[
+    R({ id:"atual", nome:"Versão vigente (até 31/07/2025)", quando:"é a que você quer em quase todo caso", devolve:"lista",
+        base:"https://www.gov.br/previdencia/pt-br/assuntos/rpps/estatisticas-e-informacoes-dos-rpps/cnpj-ente-cpnj-ug-_atualizado-ate-31-07-2025.csv",
+        params:[],
+        nota:"O nome do arquivo no portal tem um ERRO DE DIGITAÇÃO OFICIAL — `cpnj` no lugar de `cnpj`. Quem digita a URL certa recebe 404. E como a data está no nome, uma republicação muda o endereço: se der 404, abra a documentação e pegue o nome novo.",
+        produz:["CNPJ_UG","UG","CNPJ_ENTE","UF","ENTE","REGIME","NATUREZA JD","Situação"] }),
+    R({ id:"2024", nome:"Instantâneo de 03/04/2024", quando:"você quer comparar dois momentos", devolve:"lista",
+        base:"https://www.gov.br/previdencia/pt-br/assuntos/rpps/estatisticas-e-informacoes-dos-rpps/cnpj-ente-x-cnpj-ug-03042024.csv",
+        params:[],
+        nota:"Carregue os dois e cruze por CNPJ_ENTE: o que mudou de REGIME entre abril de 2024 e julho de 2025 é a lista de RPPS que entraram em extinção no período — um recorte que nenhuma das duas versões mostra sozinha.",
+        produz:["CNPJ_UG","UG","CNPJ_ENTE","UF","ENTE","REGIME","NATUREZA JD","Situação"] })
+  ]
+},
+{
+  id:"dadosgov", nome:"dados.gov.br — catálogo nacional", org:"Governo Federal", dom:"catalogos", acesso:"key",
   gran:"catalogo", peso:48,
   desc:"O índice oficial dos conjuntos de dados abertos do governo federal. Serve para descobrir fontes que ainda não estão neste catálogo.",
   base:"https://dados.gov.br/api/publico/conjuntos-dados?nomeConjuntoDados=municipios",
@@ -3590,7 +3633,7 @@ const FONTES = [
   chave:["catalogo","dados abertos","descoberta","ckan","indice"]
 },
 {
-  id:"tse", nome:"TSE — dados eleitorais", org:"Tribunal Superior Eleitoral", dom:"cadastros", acesso:"block",
+  id:"tse", nome:"TSE — dados eleitorais", org:"Tribunal Superior Eleitoral", dom:"normas", acesso:"block",
   gran:"municipio", peso:42,
   desc:"Candidatos, resultados por seção e zona, prestação de contas e eleitorado por município. Base para análise política e de perfil do eleitorado.",
   base:"https://dadosabertos.tse.jus.br/api/3/action/package_list",
@@ -3601,7 +3644,7 @@ const FONTES = [
   chave:["eleicao","candidato","voto","eleitorado","prestacao de contas","tse"]
 },
 {
-  id:"aneel", nome:"ANEEL — dados do setor elétrico", org:"ANEEL", dom:"cadastros", acesso:"block",
+  id:"aneel", nome:"ANEEL — dados do setor elétrico", org:"ANEEL", dom:"infra", acesso:"block",
   gran:"municipio", peso:34,
   desc:"Geração distribuída, tarifas, empreendimentos e indicadores de qualidade por município e distribuidora.",
   base:"https://dadosabertos.aneel.gov.br/api/3/action/package_list",
@@ -3612,7 +3655,7 @@ const FONTES = [
   chave:["energia","aneel","tarifa","geracao distribuida","solar","eletrico"]
 },
 {
-  id:"ans", nome:"ANS — saúde suplementar", org:"ANS", dom:"cadastros", acesso:"file",
+  id:"ans", nome:"ANS — saúde suplementar", org:"ANS", dom:"social", acesso:"file",
   gran:"municipio", peso:32,
   desc:"Beneficiários por município e operadora, dados cadastrais e econômico-financeiros das operadoras de planos de saúde.",
   base:"https://dadosabertos.ans.gov.br/FTP/PDA/",
@@ -3634,7 +3677,7 @@ const FONTES = [
   chave:["fnde","fundeb","siope","pnae","merenda","transferencia","educacao"]
 },
 {
-  id:"snis", nome:"SNIS — saneamento básico", org:"Ministério das Cidades", dom:"cadastros", acesso:"file",
+  id:"snis", nome:"SNIS — saneamento básico", org:"Ministério das Cidades", dom:"infra", acesso:"file",
   gran:"municipio", peso:36,
   desc:"Indicadores de água, esgoto e resíduos sólidos por município e prestador: cobertura, perdas, tarifa média e investimento.",
   base:"https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/snis",
@@ -3645,7 +3688,7 @@ const FONTES = [
   chave:["saneamento","agua","esgoto","residuos","snis","cobertura","perdas"]
 },
 {
-  id:"rfb-cnpj", nome:"Receita Federal — base completa de CNPJ", org:"Receita Federal", dom:"cadastros", acesso:"file",
+  id:"rfb-cnpj", nome:"Receita Federal — base completa de CNPJ", org:"Receita Federal", dom:"empresas", acesso:"file",
   gran:"empresa", peso:46,
   desc:"O dump oficial e completo do cadastro nacional de pessoas jurídicas: empresas, estabelecimentos, sócios, CNAEs e regime tributário. Dezenas de milhões de linhas.",
   base:"https://arquivos.receitafederal.gov.br/dados/cnpj/dados_abertos_cnpj/",
@@ -3694,7 +3737,7 @@ const FONTES = [
   chave:["pib","produto interno bruto","valor adicionado","setorial","per capita","economia"]
 },
 {
-  id:"mapbiomas", nome:"MapBiomas — cobertura e uso da terra", org:"MapBiomas", dom:"cadastros", acesso:"file",
+  id:"mapbiomas", nome:"MapBiomas — cobertura e uso da terra", org:"MapBiomas", dom:"infra", acesso:"file",
   gran:"municipio", peso:64,
   desc:"Área em hectares por classe de cobertura e uso da terra, mapeada a 30 metros desde 1985. Serve para medir desmatamento, expansão agrícola e área urbana por município ao longo de quatro décadas.",
   base:"https://brasil.mapbiomas.org/downloads/estatisticas/",
@@ -3705,7 +3748,7 @@ const FONTES = [
   chave:["mapbiomas","desmatamento","cobertura da terra","uso do solo","satelite","ambiental","agropecuaria","area urbana"]
 },
 {
-  id:"caged-painel", nome:"Novo CAGED — painel de emprego formal", org:"Ministério do Trabalho", dom:"cadastros", acesso:"painel",
+  id:"caged-painel", nome:"Novo CAGED — painel de emprego formal", org:"Ministério do Trabalho", dom:"economia", acesso:"painel",
   gran:"municipio", peso:76,
   desc:"Admissões, desligamentos e saldo de empregos formais por município, setor e ocupação, com atualização mensal. É o indicador mais tempestivo de atividade econômica local que existe no Brasil.",
   base:"https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9",
@@ -3716,7 +3759,7 @@ const FONTES = [
   chave:["caged","emprego","admissao","desligamento","saldo","trabalho formal","rais","ocupacao"]
 },
 {
-  id:"inep-data", nome:"INEP Data — painéis de educação", org:"INEP / MEC", dom:"cadastros", acesso:"painel",
+  id:"inep-data", nome:"INEP Data — painéis de educação", org:"INEP / MEC", dom:"social", acesso:"painel",
   gran:"municipio", peso:59,
   desc:"Conjunto de painéis de BI do INEP: catálogo de escolas, censo da educação básica e superior, monitoramento do PNE, ENEM e SAEB. Bom para consulta pontual; para cruzar dados, use os microdados.",
   base:"https://www.gov.br/inep/pt-br/acesso-a-informacao/dados-abertos/inep-data",
@@ -3728,7 +3771,7 @@ const FONTES = [
   chave:["inep data","painel","censo escolar","enem","saeb","pne","educacao superior"]
 },
 {
-  id:"inep-superior", nome:"INEP — indicadores da educação superior", org:"INEP / MEC", dom:"cadastros", acesso:"painel",
+  id:"inep-superior", nome:"INEP — indicadores da educação superior", org:"INEP / MEC", dom:"social", acesso:"painel",
   gran:"instituicao", peso:47,
   desc:"Painel com indicadores de trajetória no ensino superior: ingresso, matrícula, concluintes, corpo docente, cursos e pós-graduação, por instituição.",
   base:"https://app.powerbi.com/view?r=eyJrIjoiMGJiMmNiNTAtOTY1OC00ZjUzLTg2OGUtMjAzYzNiYTA5YjliIiwidCI6IjI2ZjczODk3LWM4YWMtNGIxZS05NzhmLWVhNGMwNzc0MzRiZiJ9",
@@ -3740,7 +3783,7 @@ const FONTES = [
   chave:["educacao superior","matricula","concluinte","docente","universidade","trajetoria"]
 },
 {
-  id:"ideb-painel", nome:"Painel do IDEB (iniciativa independente)", org:"Terceiro — Rodrigo Lins Rodrigues", dom:"cadastros", acesso:"painel",
+  id:"ideb-painel", nome:"Painel do IDEB (iniciativa independente)", org:"Terceiro — Rodrigo Lins Rodrigues", dom:"social", acesso:"painel",
   gran:"municipio", peso:28,
   desc:"Dashboard em R/Shiny com os resultados do IDEB. Útil para leitura rápida, mas é iniciativa pessoal: não tem garantia de continuidade nem de manutenção.",
   base:"https://rodrigolinsrodrigues.shinyapps.io/dashboard_ideb_25/",
@@ -3752,7 +3795,7 @@ const FONTES = [
   chave:["ideb","educacao","dashboard","shiny","indicador educacional"]
 },
 {
-  id:"qedu", nome:"QEdu — desempenho e infraestrutura escolar", org:"Fundação Lemann / Meritt", dom:"cadastros", acesso:"painel",
+  id:"qedu", nome:"QEdu — desempenho e infraestrutura escolar", org:"Fundação Lemann / Meritt", dom:"social", acesso:"painel",
   gran:"municipio", peso:52,
   desc:"Aprendizado adequado em português e matemática, matrículas, infraestrutura, aprovação e abandono, por escola e por município. Interface muito mais amigável que a do INEP para a mesma informação.",
   base:"https://qedu.org.br/",
@@ -3764,7 +3807,7 @@ const FONTES = [
   chave:["qedu","aprendizado","saeb","prova brasil","escola","infraestrutura escolar","abandono"]
 },
 {
-  id:"ieps", nome:"IEPS Data — panorama de saúde local", org:"Instituto de Estudos para Políticas de Saúde", dom:"cadastros", acesso:"file",
+  id:"ieps", nome:"IEPS Data — panorama de saúde local", org:"Instituto de Estudos para Políticas de Saúde", dom:"social", acesso:"file",
   gran:"municipio", peso:69,
   desc:"Indicadores de saúde já tratados e prontos para uso: cobertura de atenção primária, vacinação, pré-natal, mortalidade evitável, internações sensíveis, médicos e leitos por habitante e gasto em saúde. Poupa o trabalho pesado de tratar DATASUS bruto.",
   base:"https://iepsdata.org.br/data-downloads",
@@ -3776,7 +3819,7 @@ const FONTES = [
   chave:["saude","atencao primaria","mortalidade evitavel","vacinacao","leito","siops","internacao","ieps"]
 },
 {
-  id:"sinisa", nome:"SINISA — informações de saneamento básico", org:"Ministério das Cidades", dom:"cadastros", acesso:"file",
+  id:"sinisa", nome:"SINISA — informações de saneamento básico", org:"Ministério das Cidades", dom:"infra", acesso:"file",
   gran:"municipio", peso:63,
   desc:"O sistema que sucede o SNIS na coleta nacional de saneamento: abastecimento de água, esgoto, resíduos sólidos e drenagem, por prestador e município, com indicadores de cobertura, perdas e investimento.",
   base:"https://indicadores-sinisa-2025.cidades.gov.br/",
@@ -3788,7 +3831,7 @@ const FONTES = [
   chave:["sinisa","saneamento","agua","esgoto","residuos","drenagem","perdas","cobertura"]
 },
 {
-  id:"painel-saneamento", nome:"Painel Saneamento Brasil", org:"Instituto Trata Brasil / IAS", dom:"cadastros", acesso:"painel",
+  id:"painel-saneamento", nome:"Painel Saneamento Brasil", org:"Instituto Trata Brasil / IAS", dom:"infra", acesso:"painel",
   gran:"municipio", peso:44,
   desc:"Cruza indicadores de saneamento com saúde, educação e renda, por município, região metropolitana e estado. O valor está no cruzamento pronto, não no dado em si.",
   base:"https://www.painelsaneamento.org.br/",
@@ -3800,7 +3843,7 @@ const FONTES = [
   chave:["saneamento","trata brasil","agua","esgoto","saude","cruzamento"]
 },
 {
-  id:"primeira-infancia", nome:"Primeira Infância em Dados", org:"Fundação Maria Cecilia Souto Vidigal", dom:"cadastros", acesso:"painel",
+  id:"primeira-infancia", nome:"Primeira Infância em Dados", org:"Fundação Maria Cecilia Souto Vidigal", dom:"social", acesso:"painel",
   gran:"municipio", peso:55,
   desc:"Mais de 30 indicadores sobre crianças de 0 a 6 anos, organizados em educação, nutrição, parentalidade, proteção e saúde, seguindo a metodologia internacional Nurturing Care.",
   base:"https://primeirainfanciaemdados.org.br/",
@@ -3811,7 +3854,7 @@ const FONTES = [
   chave:["primeira infancia","crianca","0 a 6 anos","creche","nutricao","parentalidade","protecao"]
 },
 {
-  id:"ips-brasil", nome:"IPS Brasil — Índice de Progresso Social", org:"Instituto IPS / rede de parceiros", dom:"cadastros", acesso:"painel",
+  id:"ips-brasil", nome:"IPS Brasil — Índice de Progresso Social", org:"Instituto IPS / rede de parceiros", dom:"social", acesso:"painel",
   gran:"municipio", peso:49,
   desc:"Mede resultado social, não investimento: necessidades humanas básicas, fundamentos do bem-estar e oportunidades, em doze dimensões. Útil como leitura comparativa de qualidade de vida entre municípios.",
   base:"https://ipsbrasil.org.br/",
@@ -3822,7 +3865,7 @@ const FONTES = [
   chave:["ips","progresso social","qualidade de vida","ranking","bem-estar","oportunidade"]
 },
 {
-  id:"idsc", nome:"IDSC-BR — desenvolvimento sustentável das cidades", org:"Instituto Cidades Sustentáveis / SDSN", dom:"cadastros", acesso:"painel",
+  id:"idsc", nome:"IDSC-BR — desenvolvimento sustentável das cidades", org:"Instituto Cidades Sustentáveis / SDSN", dom:"social", acesso:"painel",
   gran:"municipio", peso:46,
   desc:"Cem indicadores ligados aos 17 Objetivos de Desenvolvimento Sustentável, com ranking e perfil por cidade. Serve como moldura pronta quando o cliente pede leitura por ODS.",
   base:"https://idsc.cidadessustentaveis.org.br/",
@@ -3833,7 +3876,7 @@ const FONTES = [
   chave:["ods","agenda 2030","sustentabilidade","ranking","idsc","cidades sustentaveis"]
 },
 {
-  id:"sebrae-obs", nome:"Observatório Setorial Territorial (Sebrae)", org:"Sebrae", dom:"cadastros", acesso:"painel",
+  id:"sebrae-obs", nome:"Observatório Setorial Territorial (Sebrae)", org:"Sebrae", dom:"economia", acesso:"painel",
   gran:"municipio", peso:50,
   desc:"Perfis territoriais com emprego, ocupações, empresas, demografia e educação, além de leitura de complexidade econômica — quais atividades um município sustenta e quais poderia sustentar.",
   base:"https://observatorio.sebrae.com.br/",
@@ -3845,7 +3888,7 @@ const FONTES = [
   chave:["sebrae","complexidade economica","emprego","empresas","ocupacao","perfil territorial","pequenos negocios"]
 },
 {
-  id:"mapa-turismo", nome:"Mapa do Turismo Brasileiro", org:"Ministério do Turismo", dom:"cadastros", acesso:"block",
+  id:"mapa-turismo", nome:"Mapa do Turismo Brasileiro", org:"Ministério do Turismo", dom:"infra", acesso:"block",
   gran:"municipio", peso:41,
   desc:"Quais municípios integram o Mapa do Turismo, em que região turística e em qual categoria (A a E) foram classificados. Define elegibilidade a políticas e recursos federais de turismo.",
   base:"https://dados.turismo.gov.br/api/3/action/package_show?id=categorizacao",
@@ -3857,7 +3900,7 @@ const FONTES = [
   chave:["turismo","mapa do turismo","categorizacao","regiao turistica","mtur"]
 },
 {
-  id:"ri-mds", nome:"Relatórios de Informações Sociais — CadÚnico e Bolsa Família", org:"MDS", dom:"cadastros", acesso:"painel",
+  id:"ri-mds", nome:"Relatórios de Informações Sociais — CadÚnico e Bolsa Família", org:"MDS", dom:"social", acesso:"painel",
   gran:"municipio", peso:66,
   desc:"Relatório completo por município: famílias no CadÚnico por faixa de renda, beneficiários do Bolsa Família, valores repassados e cobertura estimada. É a leitura padrão de vulnerabilidade social municipal.",
   base:"https://aplicacoes.cidadania.gov.br/ri/pbfcad/relatorio-completo.html",
@@ -3868,7 +3911,7 @@ const FONTES = [
   chave:["cadunico","bolsa familia","assistencia social","vulnerabilidade","renda","beneficiario","mds"]
 },
 {
-  id:"mapa-social", nome:"Mapa Social — equipamentos e serviços do MDS", org:"MDS", dom:"cadastros", acesso:"painel",
+  id:"mapa-social", nome:"Mapa Social — equipamentos e serviços do MDS", org:"MDS", dom:"social", acesso:"painel",
   gran:"setor", peso:43,
   desc:"Onde estão os equipamentos socioassistenciais (CRAS, CREAS) e como se distribuem as famílias do CadÚnico no território, chegando ao nível de setor censitário.",
   base:"https://mapa-social.mds.gov.br/",
@@ -3880,7 +3923,7 @@ const FONTES = [
   chave:["cras","creas","equipamento","assistencia social","setor censitario","territorio","mapa social"]
 },
 {
-  id:"datapedia", nome:"Datapedia", org:"Datapedia (privado)", dom:"cadastros", acesso:"painel",
+  id:"datapedia", nome:"Datapedia", org:"Datapedia (privado)", dom:"social", acesso:"painel",
   gran:"municipio", pago:true, peso:35,
   desc:"Plataforma comercial que agrega dados eleitorais do TSE, IBGE, emendas parlamentares e indicadores dos ODS, com recorte que chega a bairro e local de votação.",
   base:"https://datapedia.info/",
@@ -4255,7 +4298,7 @@ const FONTES = [
 
 /* ---------------- CADASTROS, SANÇÕES E CLASSIFICAÇÃO ---------------- */
 {
-  id:"ibge-cnae", nome:"IBGE — CNAE (classificação de atividades)", org:"IBGE", dom:"cadastros", acesso:"naoaud",
+  id:"ibge-cnae", nome:"IBGE — CNAE (classificação de atividades)", org:"IBGE", dom:"empresas", acesso:"naoaud",
   gran:"catalogo", core:true, peso:74,
   desc:"Resolve o código de atividade econômica em descrição, com a hierarquia seção → divisão → grupo → classe → subclasse. É a tabela que dá sentido ao campo `cnae_fiscal` de qualquer consulta de CNPJ.",
   base:"https://servicodados.ibge.gov.br/api/v2/cnae/classes",
@@ -4279,7 +4322,7 @@ const FONTES = [
   ]
 },
 {
-  id:"cnep", nome:"CNEP — empresas punidas (Lei Anticorrupção)", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"key",
+  id:"cnep", nome:"CNEP — empresas punidas (Lei Anticorrupção)", org:"CGU / Portal da Transparência", dom:"empresas", acesso:"key",
   gran:"empresa", peso:70,
   desc:"Cadastro Nacional de Empresas Punidas: sanções da Lei 12.846 com órgão sancionador, fundamentação e vigência. Junto do CEIS, fecha a checagem de idoneidade de um fornecedor.",
   base:"https://api.portaldatransparencia.gov.br/api-de-dados/cnep?pagina=1",
@@ -4292,7 +4335,7 @@ const FONTES = [
   chave:["cnep","empresa punida","lei anticorrupcao","sancao","idoneidade","fornecedor"]
 },
 {
-  id:"cepim", nome:"CEPIM — entidades sem fins lucrativos impedidas", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"key",
+  id:"cepim", nome:"CEPIM — entidades sem fins lucrativos impedidas", org:"CGU / Portal da Transparência", dom:"empresas", acesso:"key",
   gran:"empresa", peso:52,
   desc:"Entidades privadas sem fins lucrativos impedidas de celebrar convênio, contrato de repasse ou termo de parceria com a União. É a checagem que falta quando o contratado é uma OSC.",
   base:"https://api.portaldatransparencia.gov.br/api-de-dados/cepim?pagina=1",
@@ -4305,7 +4348,7 @@ const FONTES = [
   chave:["cepim","osc","entidade","convenio","impedida","terceiro setor"]
 },
 {
-  id:"sancoes-arquivo", nome:"Sanções (CEIS, CNEP, CEPIM, acordos) — arquivos CSV", org:"CGU / Portal da Transparência", dom:"cadastros", acesso:"file",
+  id:"sancoes-arquivo", nome:"Sanções (CEIS, CNEP, CEPIM, acordos) — arquivos CSV", org:"CGU / Portal da Transparência", dom:"empresas", acesso:"file",
   gran:"empresa", core:true, peso:76,
   desc:"As mesmas bases de sanção da API, em CSV mensal e SEM chave de API. É o caminho que funciona de dentro de um arquivo offline: baixe, arraste, cruze pelo CNPJ.",
   base:"https://portaldatransparencia.gov.br/download-de-dados/ceis",
@@ -4317,7 +4360,7 @@ const FONTES = [
   chave:["ceis","cnep","cepim","sancao","inidoneo","impedido","suspenso","fornecedor","due diligence","csv"]
 },
 {
-  id:"brasilapi-ncm", nome:"BrasilAPI — NCM (nomenclatura de mercadorias)", org:"Comunidade / BrasilAPI", dom:"cadastros", acesso:"naoaud",
+  id:"brasilapi-ncm", nome:"BrasilAPI — NCM (nomenclatura de mercadorias)", org:"Comunidade / BrasilAPI", dom:"empresas", acesso:"naoaud",
   gran:"catalogo", peso:44,
   desc:"Busca o código NCM por texto ou traz a descrição de um código. É o vocabulário de produto que aparece em nota fiscal, licitação e comércio exterior.",
   base:"https://brasilapi.com.br/api/ncm/v1?search=arroz",
@@ -4340,7 +4383,7 @@ const FONTES = [
 
 /* ---------------- COMÉRCIO EXTERIOR ---------------- */
 {
-  id:"comexstat", nome:"Comex Stat — balança comercial (município e NCM)", org:"MDIC / Secex", dom:"cadastros", acesso:"file",
+  id:"comexstat", nome:"Comex Stat — balança comercial (município e NCM)", org:"MDIC / Secex", dom:"economia", acesso:"file",
   gran:"municipio", core:true, peso:72,
   desc:"Exportação e importação por NCM, país, via, UF e MUNICÍPIO, mês a mês desde 1997. Responde 'o que esta cidade vende para fora' — pergunta que nenhuma base fiscal responde.",
   base:"https://balanca.economia.gov.br/balanca/bd/comexstat-bd/",
@@ -4380,7 +4423,7 @@ const FONTES = [
 
 /* ---------------- VEICULAR E AMBIENTAL ---------------- */
 {
-  id:"senatran-frota", nome:"SENATRAN — frota de veículos por município", org:"Ministério dos Transportes / SENATRAN", dom:"cadastros", acesso:"file",
+  id:"senatran-frota", nome:"SENATRAN — frota de veículos por município", org:"Ministério dos Transportes / SENATRAN", dom:"infra", acesso:"file",
   gran:"municipio", peso:64,
   desc:"Frota por município, tipo de veículo, combustível e ano-modelo, mês a mês. Dá o denominador de qualquer análise de trânsito, seguro, licenciamento ou mercado automotivo local.",
   base:"https://www.gov.br/transportes/pt-br/assuntos/transito/conteudo-Senatran/estatisticas-frota-de-veiculos-senatran",
@@ -4392,7 +4435,7 @@ const FONTES = [
   chave:["frota","veiculo","carro","moto","senatran","denatran","transito","licenciamento","municipio"]
 },
 {
-  id:"ibama-embargos", nome:"IBAMA — autos de infração e áreas embargadas", org:"IBAMA", dom:"cadastros", acesso:"naoaud",
+  id:"ibama-embargos", nome:"IBAMA — autos de infração e áreas embargadas", org:"IBAMA", dom:"empresas", acesso:"naoaud",
   gran:"empresa", peso:60,
   desc:"Autos de infração ambiental e áreas embargadas com CPF/CNPJ do autuado, valor da multa e município. Fecha a due diligence de fornecedor pelo lado ambiental, que o CEIS não cobre.",
   base:"https://dadosabertos.ibama.gov.br/api/3/action/package_search?q=embargo&rows=20",
@@ -4406,7 +4449,7 @@ const FONTES = [
 
 /* ---------------- CEARÁ: ESTADO, CAPITAL E CONTROLE EXTERNO ---------------- */
 {
-  id:"dados-ce", nome:"Ceará — Portal de Dados Abertos do Estado", org:"Governo do Ceará", dom:"cadastros", acesso:"naoaud",
+  id:"dados-ce", nome:"Ceará — Portal de Dados Abertos do Estado", org:"Governo do Ceará", dom:"catalogos", acesso:"naoaud",
   gran:"catalogo", peso:58,
   desc:"Acervo CKAN do estado: educação, segurança, saúde, receita estadual, servidores e obras. É a porta de entrada para o dado estadual que não existe em base federal.",
   base:"https://dados.ce.gov.br/api/3/action/package_search?q=&rows=20",
@@ -4418,7 +4461,7 @@ const FONTES = [
   chave:["ceara","estado","dados abertos","ckan","estadual","fortaleza","governo do ceara"]
 },
 {
-  id:"dados-fortaleza", nome:"Fortaleza — Portal de Dados Abertos do Município", org:"Prefeitura de Fortaleza", dom:"cadastros", acesso:"naoaud",
+  id:"dados-fortaleza", nome:"Fortaleza — Portal de Dados Abertos do Município", org:"Prefeitura de Fortaleza", dom:"catalogos", acesso:"naoaud",
   gran:"catalogo", peso:56,
   desc:"Acervo municipal de Fortaleza: mobilidade, saúde, educação, licitações, IPTU e equipamentos públicos. Dado municipal de verdade, não agregado federal.",
   base:"https://dados.fortaleza.ce.gov.br/api/3/action/package_search?q=&rows=20",
@@ -4430,7 +4473,7 @@ const FONTES = [
   chave:["fortaleza","municipio","prefeitura","dados abertos","ckan","iptu","mobilidade","ceara"]
 },
 {
-  id:"ipece", nome:"IPECE — indicadores econômicos e sociais do Ceará", org:"IPECE", dom:"cadastros", acesso:"painel",
+  id:"ipece", nome:"IPECE — indicadores econômicos e sociais do Ceará", org:"IPECE", dom:"economia", acesso:"painel",
   gran:"municipio", peso:54,
   desc:"PIB municipal, IDM (Índice de Desenvolvimento Municipal), perfil básico dos 184 municípios e séries econômicas estaduais. É o equivalente estadual do que o IBGE faz para o país.",
   base:"https://www.ipece.ce.gov.br/",
@@ -4518,17 +4561,26 @@ const RECEITAS = [
     url:"https://minhareceita.org/00000000000191", envelope:null }
 ];
 
+/* Um domínio com 43 das 101 fontes não é filtro: é a lista inteira com outro
+   nome. Era o caso de `cadastros` ("Setoriais e cadastros"), que punha no
+   mesmo botão escola, hospital, saneamento, CNPJ, sanção ambiental e série do
+   Banco Central. Quebrado em cinco assuntos que alguém procura de verdade —
+   depois disso o maior balde é `fiscal`, com 20. */
 const DOMINIOS = {
   territorio:{ rot:"Território e demografia" },
   fiscal:{ rot:"Fiscal e contábil" },
   compras:{ rot:"Compras e contratos" },
-  cadastros:{ rot:"Setoriais e cadastros" },
+  empresas:{ rot:"Empresas, CNPJ e sanções" },
+  social:{ rot:"Saúde, educação e assistência" },
+  infra:{ rot:"Infraestrutura e meio ambiente" },
+  economia:{ rot:"Economia, trabalho e comércio" },
   /* Mercado de capitais ganhou domínio próprio: quem procura fundo, cota ou
      índice não procura no mesmo lugar que quem procura RREO. As 15 fontes que
      usavam um `setorial` inexistente ficavam sem botão no filtro e mostravam
      o código cru na ficha técnica. */
   mercado:{ rot:"Mercado e capitais" },
-  normas:{ rot:"Legislativo, normas e justiça" }
+  normas:{ rot:"Legislativo, normas e justiça" },
+  catalogos:{ rot:"Catálogos e portais de dados" }
 };
 
 const ACESSOS = {
@@ -4578,7 +4630,7 @@ const RECEITAS_ARQUIVO = [
     alternativa:"Também servem a 189 (IGP-M) e a 188 (INPC). Para o Sharpe, use a 4389 (CDI ao ano) e informe o valor na própria pergunta: \"sharpe com cdi de 11%\"." },
 
   { id:"fa-b3", src:"b3-cotahist", titulo:"Cotações históricas da B3",
-    org:"B3", dom:"setorial", usa:"finrisco",
+    org:"B3", dom:"mercado", usa:"finrisco",
     portal:"https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/series-historicas/",
     desc:"Série histórica anual de todos os papéis. É arquivo de largura fixa, não CSV: precisa de um passo de conversão antes de entrar aqui.",
     passos:[
@@ -4589,7 +4641,7 @@ const RECEITAS_ARQUIVO = [
     alternativa:"Se você acompanha poucos ativos, exportar o histórico da própria corretora costuma ser mais rápido e já vem em CSV." },
 
   { id:"fa-cvm-dfp", src:"cvm-dfp", titulo:"Demonstrações financeiras de companhias abertas",
-    org:"CVM — Dados Abertos", dom:"setorial", usa:"finindic",
+    org:"CVM — Dados Abertos", dom:"mercado", usa:"finindic",
     portal:"https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp",
     desc:"DFP (anual) e ITR (trimestral) de todas as companhias abertas: balanço patrimonial e demonstração de resultado, em CSV dentro de um ZIP por ano.",
     passos:[
@@ -4626,7 +4678,7 @@ const RECEITAS_ARQUIVO = [
      nenhuma destas foi auditada no navegador. Dizer "API direta" sem ter
      testado seria inventar uma promessa — aqui o caminho é o download. */
   { id:"fa-cvm-fi-diario", src:"cvm-fi-diario", titulo:"Informe diário de fundos (cota e patrimônio)",
-    org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
+    org:"CVM — Dados Abertos", dom:"mercado", usa:"fincompara",
     portal:"https://dados.cvm.gov.br/dataset/fi-doc-inf_diario",
     desc:"A base canônica para comparar fundos: uma linha por fundo por dia útil, com CNPJ, valor da cota, patrimônio líquido, captação, resgate e número de cotistas. A cota já vem líquida de taxa de administração — o que você compara é o que o cotista recebeu.",
     passos:[
@@ -4637,7 +4689,7 @@ const RECEITAS_ARQUIVO = [
     alternativa:"Para saber o nome, a classe, o gestor e a taxa de cada CNPJ, baixe também o cadastro (dataset fi-cad) e cruze pelo CNPJ na aba Cruzar bases." },
 
   { id:"fa-cvm-fi-cad", src:"cvm-fi-cad", titulo:"Cadastro de fundos (nome, classe, gestor, taxa)",
-    org:"CVM — Dados Abertos", dom:"setorial", usa:"fincompara",
+    org:"CVM — Dados Abertos", dom:"mercado", usa:"fincompara",
     portal:"https://dados.cvm.gov.br/dataset/fi-cad",
     desc:"O de-para do CNPJ: denominação social, classe, situação, data de início, administrador, gestor, taxa de administração e de performance. É o que transforma um ranking de 14 dígitos num ranking legível.",
     passos:[
@@ -4659,7 +4711,7 @@ const RECEITAS_ARQUIVO = [
     alternativa:"A API do CADPREV está no catálogo, mas foi auditada em 05/09/2026 com CORS negado: pelo navegador, é download." },
 
   { id:"fa-anbima", src:"anbima-indices", titulo:"Índices de referência da ANBIMA (IMA, IHFA, IDkA)",
-    org:"ANBIMA", dom:"setorial", usa:"fincompara",
+    org:"ANBIMA", dom:"mercado", usa:"fincompara",
     portal:"https://www.anbima.com.br/pt_br/informar/",
     desc:"Os benchmarks que fazem sentido para renda fixa brasileira: IMA-B (títulos indexados ao IPCA), IRF-M (prefixados), IMA-Geral e IHFA (multimercados). Comparar um fundo de renda fixa longa contra o CDI é comparar contra o benchmark errado — a diferença aparece como habilidade e é só duração.",
     passos:[
@@ -4670,7 +4722,7 @@ const RECEITAS_ARQUIVO = [
     alternativa:"A ANBIMA tem API para associados e cadastrados, com credencial própria. Como qualquer chave, ela não deve viver em código de navegador — por isso aqui o caminho é o arquivo." },
 
   { id:"fa-corretora", titulo:"O extrato da sua própria corretora",
-    org:"Sua corretora", dom:"setorial", usa:"finrisco", portal:"",
+    org:"Sua corretora", dom:"mercado", usa:"finrisco", portal:"",
     desc:"O caminho mais curto para analisar a carteira que é sua de verdade: quase toda corretora exporta posição e histórico em CSV ou XLSX.",
     passos:[
       "Exporte o histórico de posição, não só as notas de corretagem: precisa de data e valor.",
@@ -5509,6 +5561,11 @@ const RECEITAS_ARQUIVO = [
        "retorno" e "real" também aparecem em frases de ranking comum --- */
     { intent: 'contabil', re: /(vis(ao|oes|ão|ões) cont[áa]bil|vis(ao|oes|ão|ões) cont[áa]beis|plano de contas|receita e despesa|despesa e receita|\brcl\b|\bdcl\b|resultado orcamentario|execucao orcamentaria|balanco orcamentario|por natureza (da )?(receita|despesa)|analise contabil|contas do ente|demonstrativo)/ },
     { intent: 'fincarteira', re: /(carteira do rpps|composicao da carteira|enquadramento|resolucao cmn|limites? (da )?cmn|\bdair\b|distribuicao por segmento|concentracao por gestor|quanto (tem|esta) em cada (fundo|segmento))/ },
+    /* ANTES de fincompara, e de propósito: "comparar os fundos contra os
+       pares" casa com as duas regras, e a específica tem de vencer. Meta
+       setorial É comparação de fundos — só que contra um benchmark que não
+       existe na base, porque é construído a partir dos próprios pares. */
+    { intent: 'finsetorial', re: /(meta setorial|benchmark setorial|alfa setorial|contra (os |seus )?pares|versus (os )?pares|peer group|grupo de pares|(mediana|media) d[oa] (setor|grupo|classe|categoria|pares)|(contra|versus|acima d[ao]|em relacao a[o]?) (a )?(mediana|media) d[oa] (setor|grupo|classe|categoria)|compara[rc].{0,20}(com|contra|ao) (o )?(setor|grupo|mesma classe|mesma categoria)|dentro d[ao] (mesma )?(classe|categoria|segmento)|fundos? d[oa] mesm[ao] (classe|categoria|segmento)|bate[mu]? (os |seus )?pares|acima dos pares)/ },
     { intent: 'fincompara', re: /(comparar (os )?fundos|comparacao de fundos|comparador de fundos|ranking de fundos|melhores fundos|qual fundo (rende|rendeu|e melhor|foi melhor)|fundos? (que )?(bate[mu]?|superou|superam) o (cdi|benchmark|indice)|desempenho dos fundos|fundos lado a lado|compara[rc].{0,18}(fundos|cotas|gestores))/ },
     { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada|capacidade de pagamento|\bcapag\b)/ },
     { intent: 'finreal', re: /(deflacion|valores? reais|em termos reais|descontada a inflacao|corrigid[oa] pel[oa] (ipca|igp|inpc|inflacao)|a precos de|poder de compra|real vs nominal|nominal vs real|inflacao acumulada|serie real)/ },
@@ -5558,7 +5615,7 @@ const RECEITAS_ARQUIVO = [
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
     finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
-    fincompara: 1, fincarteira: 1, contabil: 1,
+    fincompara: 1, fincarteira: 1, finsetorial: 1, contabil: 1,
     /* a consulta por identificador não sai da base carregada: não há dimensão
        nem medida a exigir, e exigir uma seria inventar requisito */
     consulta: 1 };
@@ -11165,6 +11222,201 @@ const RECEITAS_ARQUIVO = [
     };
   }
 
+  /* =========================================================
+     META SETORIAL — O BENCHMARK QUE SAI DOS PRÓPRIOS PARES
+
+     Comparar um fundo de ações contra o CDI diz pouco: a diferença é prêmio
+     de risco, não habilidade do gestor. O que responde "este gestor é bom?"
+     é a comparação contra quem corre o MESMO risco — os outros fundos da
+     mesma classe, no mesmo período.
+
+     Três armadilhas, todas tratadas aqui:
+
+     1. O FUNDO DENTRO DO PRÓPRIO BENCHMARK. Se a meta é a mediana do grupo e
+        o fundo está no grupo, ele compete contra si mesmo. Num grupo de 5,
+        cada fundo tem 20% de peso na própria meta, e o alfa medido encolhe
+        na direção de zero. A meta de cada fundo é calculada SEM ele —
+        deixa-um-de-fora, período a período.
+     2. MÉDIA OU MEDIANA. A média de 8 fundos com um fora da curva é o fora
+        da curva. Mediana por padrão; a média fica disponível para quem
+        quiser o número que o mercado costuma publicar.
+     3. METADE BATE A MEDIANA POR CONSTRUÇÃO. Num grupo de 40, ~20 ficam
+        acima — sem gestor nenhum ter habilidade. Por isso a meta setorial
+        não devolve ranking: devolve uma série de benchmark que entra no
+        mesmo `contraBenchmark` + FDR que o resto do módulo já usa.
+     ========================================================= */
+
+  /* Nomes de coluna que carregam classificação de fundo. A lista sozinha não
+     decide nada — o teste que vale é o de baixo: classificação é CONSTANTE
+     por fundo. Uma coluna que muda de valor dentro do mesmo CNPJ é outra
+     coisa (data, cota, PL), por mais que o nome combine. */
+  /* Dois níveis, e a ordem entre eles importa. O que o fundo FAZ (classe,
+     categoria, segmento, estratégia) é o agrupamento certo por padrão: é o
+     que define o risco que ele corre. QUEM o administra (gestora, banco) é
+     um agrupamento legítimo — "como me saio contra os outros fundos da
+     mesma casa?" — mas se vencer por acaso, um fundo de ações passa a ser
+     medido contra um de renda fixa da mesma gestora, que é exatamente o
+     erro que esta tela existe para não cometer. */
+  const CLASSE_RE = /^(classe|classes|classe anbima|cl anbima|categoria|categorias|segmento|segmentos|setor|setores|tipo|tipos|tp fundo|tipo fundo|tipo de fundo|estrategia|estrategias|subclasse|sub classe|benchmark|indice de referencia)$/;
+  const GESTOR_RE = /^(gestor|gestora|gestores|administrador|administradora|casa|instituicao|banco|distribuidor)$/;
+
+  /**
+   * Procura no dataset a coluna que classifica cada fundo. Devolve também
+   * POR QUE descartou as candidatas — quem não achou o agrupamento quer
+   * saber o que faltou, não receber uma lista vazia.
+   */
+  function detectarClasse(ds, series, fmt) {
+    const idKey = fmt && fmt.colId ? fmt.colId.key : null;
+    if (!idKey || !ds || !ds.rows || !ds.rows.length) {
+      return { col: null, motivo: 'a base não tem uma coluna que identifique o fundo', candidatas: [] };
+    }
+    const idsSerie = new Set(series.map((s) => String(s.id)));
+    /* O dataset expõe `columns` com papel, não `dims`. Ler a propriedade que
+       não existe não dá erro em JS: dá lista vazia, e a detecção falha em
+       silêncio dizendo "nenhuma coluna classifica os fundos". */
+    const dims = (ds.columns || []).filter((c) =>
+      !c.virtual && c.key !== idKey && (c.role === 'dimension' || c.role === 'id' || c.role === 'text'));
+    const cand = [];
+    for (const c of dims) {
+      const nome = AG.norm(c.label || c.key);
+      /* Uma classificação é constante dentro do fundo. Este laço é o filtro
+         de verdade: nome parecido sem constância é coincidência. */
+      const porFundo = new Map();
+      let variou = false;
+      for (const r of ds.rows) {
+        const fid = String(r[idKey]);
+        if (!idsSerie.has(fid)) continue;
+        const v = r[c.key];
+        if (v === null || v === undefined || String(v).trim() === '') continue;
+        const sv = String(v).trim();
+        if (!porFundo.has(fid)) porFundo.set(fid, sv);
+        else if (porFundo.get(fid) !== sv) { variou = true; break; }
+      }
+      if (variou || porFundo.size < 2) continue;
+      const distintos = new Set(porFundo.values());
+      /* Um valor só não separa ninguém; um valor por fundo é o próprio nome
+         do fundo com outro rótulo. Entre os dois extremos é que há grupo. */
+      if (distintos.size < 2 || distintos.size >= porFundo.size) continue;
+      const cobertura = porFundo.size / idsSerie.size;
+      /* Nada de desempate por "número de grupos mais parecido com 5": é
+         critério inventado, e foi ele que fez `gestora` (5 valores) vencer
+         `classe_anbima` (4) numa base em que a classe estava escrita na
+         coluna ao lado. A ordem é a do significado, e a cobertura só
+         desempata dentro do mesmo nível. */
+      cand.push({
+        col: c, nome: c.label || c.key, mapa: porFundo, grupos: distintos.size,
+        cobertura: cobertura,
+        score: (CLASSE_RE.test(nome) ? 200 : GESTOR_RE.test(nome) ? 100 : 0) + cobertura * 10
+      });
+    }
+    if (!cand.length) {
+      return {
+        col: null, candidatas: [],
+        motivo: 'nenhuma coluna da base classifica os fundos: ou nenhuma se repete entre fundos, ' +
+          'ou a que se repete muda de valor dentro do mesmo fundo (aí não é classificação, é medida)'
+      };
+    }
+    cand.sort((a, b) => b.score - a.score);
+    const esc = cand[0];
+    const grupos = new Map();
+    for (const [fid, cls] of esc.mapa) {
+      if (!grupos.has(cls)) grupos.set(cls, []);
+      grupos.get(cls).push(fid);
+    }
+    return {
+      col: esc.col, nome: esc.nome, mapa: esc.mapa, grupos: grupos,
+      cobertura: esc.cobertura, candidatas: cand.slice(1, 4).map((x) => x.nome), motivo: null
+    };
+  }
+
+  /** Retornos período a período, indexados pela data de chegada. */
+  function retornosDe(s) {
+    const m = new Map();
+    for (let i = 1; i < s.datas.length; i++) {
+      const a = s.valores[i - 1], b = s.valores[i];
+      if (!(a > 0) || !isFinite(b)) continue;
+      m.set(s.datas[i], b / a - 1);
+    }
+    return m;
+  }
+
+  /**
+   * Monta, para cada fundo, a série de benchmark dos seus PARES — sem ele.
+   * O resultado é uma série de índice comum (base 100), então tudo o que o
+   * módulo já sabe fazer contra um benchmark vale aqui sem uma linha nova:
+   * excesso, tracking error, índice de informação, t, p e o FDR.
+   *
+   * opts.medida    'mediana' (padrão) ou 'media'
+   * opts.spreadAno prêmio exigido sobre os pares, ao ano (0,02 = pares + 2%)
+   * opts.minPares  mínimo de pares vivos no período (padrão 3)
+   */
+  function metaSetorial(series, grupos, opts) {
+    const o = opts || {};
+    const medida = o.medida === 'media' ? 'media' : 'mediana';
+    const spreadAno = typeof o.spreadAno === 'number' && isFinite(o.spreadAno) ? o.spreadAno : 0;
+    const minPares = o.minPares === undefined ? 3 : o.minPares;
+
+    const porId = new Map(series.map((s) => [String(s.id), s]));
+    const ret = new Map(series.map((s) => [String(s.id), retornosDe(s)]));
+    const saida = [], recusados = [];
+
+    for (const [classe, ids] of grupos) {
+      const vivos = ids.filter((x) => porId.has(String(x))).map(String);
+      /* Com minPares=3, um grupo precisa de 4 membros: cada fundo tem de
+         sobrar com 3 pares depois de sair do próprio cálculo. */
+      if (vivos.length < minPares + 1) {
+        recusados.push({
+          classe: classe, membros: vivos.length, faltam: (minPares + 1) - vivos.length,
+          motivo: 'mediana de ' + (vivos.length - 1) + ' par(es) não descreve um setor'
+        });
+        continue;
+      }
+      for (const alvo of vivos) {
+        const s = porId.get(alvo);
+        const ppa = (F.frequencia(s.datas) || {}).ppa || null;
+        /* O prêmio é ao ano e a série é por período: a conversão é
+           geométrica, não divisão. Dividir por 12 erra para cima. */
+        const spreadPer = spreadAno && ppa ? Math.pow(1 + spreadAno, 1 / ppa) - 1 : 0;
+        const datas = [], valores = [];
+        let idx = 100, usadas = 0, paresMin = Infinity;
+        valores.push(idx); datas.push(s.datas[0]);
+        for (let i = 1; i < s.datas.length; i++) {
+          const t = s.datas[i];
+          const amostra = [];
+          for (const outro of vivos) {
+            if (outro === alvo) continue;                 // deixa-um-de-fora
+            const r = ret.get(outro).get(t);
+            if (typeof r === 'number' && isFinite(r)) amostra.push(r);
+          }
+          if (amostra.length < minPares) continue;
+          paresMin = Math.min(paresMin, amostra.length);
+          const m = medida === 'media' ? S.mean(amostra) : S.median(amostra);
+          if (m === null || !isFinite(m)) continue;
+          idx *= (1 + m) * (1 + spreadPer);
+          datas.push(t); valores.push(idx); usadas++;
+        }
+        if (usadas < 6) {
+          recusados.push({
+            classe: classe, fundo: s.label || alvo, membros: vivos.length,
+            motivo: 'só ' + usadas + ' período(s) tiveram ' + minPares + ' pares reportando ao mesmo tempo'
+          });
+          continue;
+        }
+        saida.push({
+          id: alvo, label: s.label || alvo, classe: classe,
+          pares: vivos.length - 1, paresMinNoPeriodo: isFinite(paresMin) ? paresMin : null,
+          periodos: usadas, ppa: ppa,
+          bench: { id: '__meta__' + alvo, label: 'pares de ' + classe, datas: datas, valores: valores }
+        });
+      }
+    }
+    return {
+      itens: saida, recusados: recusados, medida: medida,
+      spreadAno: spreadAno, minPares: minPares,
+      classes: Array.from(grupos.keys())
+    };
+  }
+
   /**
    * Meta atuarial: IPCA do período + taxa contratada ao ano. É o benchmark
    * que decide se um RPPS cumpriu a obrigação — e não é o CDI.
@@ -11299,7 +11551,8 @@ const RECEITAS_ARQUIVO = [
   AG.fundos = {
     detectarFormato, extrairSeries, janelaComum, metricas, matrizCorrelacao,
     contraBenchmark, metaAtuarial, sobrevivemAoFDR, concentracao, enquadramento,
-    CMN, COTA_RE, PL_RE
+    detectarClasse, metaSetorial, retornosDe,
+    CMN, COTA_RE, PL_RE, CLASSE_RE, GESTOR_RE
   };
 })();
 
@@ -19648,6 +19901,13 @@ const RECEITAS_ARQUIVO = [
      ========================================================= */
   const estado = { q: '', dom: new Set(), acesso: new Set(), gran: new Set(), sel: null };
 
+  /* As três tabelas de rótulo têm formatos diferentes: DOMINIOS e ACESSOS
+     guardam objeto ({rot, cls, curto}), GRANS guarda string solta. Quem lê
+     precisa saber disso uma vez só, aqui — e não em cada ponto de uso. */
+  const rotDom = (k) => ((F.DOMINIOS || {})[k] || {}).rot || k;
+  const rotGran = (k) => (F.GRANS || {})[k] || k;
+  const rotulo = (mapa, k) => (typeof mapa[k] === 'string' ? mapa[k] : (mapa[k].rot || mapa[k].curto || k));
+
   function textoDe(f) {
     return AG.norm([f.nome, f.org, f.desc, (f.chave || []).join(' '), f.cobertura || ''].join(' '));
   }
@@ -20139,43 +20399,85 @@ const RECEITAS_ARQUIVO = [
     body.appendChild(abas);
 
     /* --- catálogo --- */
-    const busca = el('input', { class: 'inp', placeholder: 'Buscar: município, população, dívida, contrato, saúde…' });
+    /* `estado` é do módulo e sobrevive ao fechar da janela, mas os controles
+       nasciam zerados: reabrir o catálogo depois de uma busca mostrava a lista
+       filtrada com a caixa de busca vazia e as pastilhas apagadas. Estado e
+       representação do estado têm de concordar, ou a tela mente. */
+    const busca = el('input', {
+      class: 'inp', value: estado.q,
+      placeholder: 'Buscar: município, população, dívida, contrato, saúde…'
+    });
+    busca.value = estado.q;
     busca.addEventListener('input', () => { estado.q = busca.value; desenhaLista(); });
     painelCat.appendChild(busca);
 
-    const filtros = el('div', { class: 'pill-row', style: { margin: '8px 0 4px' } });
-    const grupo = (mapa, conj) => {
+    /* Três eixos, cada um numa linha com o seu nome à esquerda. Sem o rótulo,
+       dezesseis pastilhas seguidas viram uma parede em que ninguém distingue
+       "por assunto" de "por forma de acesso". */
+    const botoesFiltro = [];
+    const linhaFiltro = (titulo, mapa, conj) => {
+      const linha = el('div', { class: 'filtro-linha' });
+      linha.appendChild(el('span', { class: 'filtro-rot', text: titulo }));
+      const pills = el('div', { class: 'pill-row' });
       for (const k in mapa) {
-        const rot = mapa[k].rot || mapa[k].curto || k;
-        const b = el('button', { class: 'pill', text: rot });
+        const b = el('button', {
+          class: 'pill' + (conj.has(k) ? ' sel' : ''), text: rotulo(mapa, k), 'data-filtro': k
+        });
         b.addEventListener('click', () => {
           if (conj.has(k)) { conj.delete(k); b.classList.remove('sel'); }
           else { conj.add(k); b.classList.add('sel'); }
           desenhaLista();
         });
-        filtros.appendChild(b);
+        botoesFiltro.push({ b, conj, k });
+        pills.appendChild(b);
       }
+      linha.appendChild(pills);
+      painelCat.appendChild(linha);
     };
-    grupo(F.DOMINIOS, estado.dom);
-    filtros.appendChild(el('span', { style: { opacity: '.3', padding: '0 4px' }, text: '│' }));
-    grupo(F.ACESSOS, estado.acesso);
-    painelCat.appendChild(filtros);
+    linhaFiltro('Assunto', F.DOMINIOS, estado.dom);
+    linhaFiltro('Acesso', F.ACESSOS, estado.acesso);
+    /* O filtro de granularidade existia no estado e em filtradas() desde a
+       V10 e nunca teve controle na tela — código vivo que nunca rodava.
+       É o eixo que corta os assuntos: "o que devolve empresa", venha de onde
+       vier. GRANS é mapa de string, daí o `rotulo()` que trata os dois casos. */
+    linhaFiltro('Devolve', F.GRANS, estado.gran);
 
     const contagem = el('div', { class: 'hint', style: { margin: '6px 0' } });
+    const btnLimpar = el('button', {
+      /* `id` próprio porque o shell do app já tem um #clear-filters com o
+         mesmo rótulo, para os filtros da BASE. Os dois nunca aparecem juntos
+         (o modal cobre o shell), mas quem seleciona por texto pega o errado. */
+      id: 'fontes-limpar', class: 'btn sm ghost', text: 'Limpar filtros',
+      style: { display: 'none', marginLeft: '8px' },
+      onclick: () => {
+        estado.dom.clear(); estado.acesso.clear(); estado.gran.clear();
+        estado.q = ''; busca.value = '';
+        for (const x of botoesFiltro) x.b.classList.remove('sel');
+        desenhaLista();
+      }
+    });
+    const barra = el('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap' } });
+    barra.appendChild(contagem); barra.appendChild(btnLimpar);
     const lista = el('div', { class: 'fontes-lista' });
-    painelCat.appendChild(contagem);
+    painelCat.appendChild(barra);
     painelCat.appendChild(lista);
 
     function desenhaLista() {
       const fs = filtradas();
+      const ativos = estado.dom.size + estado.acesso.size + estado.gran.size + (estado.q ? 1 : 0);
       contagem.textContent = fs.length + ' de ' + F.FONTES.length + ' fontes' +
         (estado.q ? ' para “' + estado.q + '”' : '');
+      btnLimpar.style.display = ativos ? '' : 'none';
       lista.innerHTML = '';
       if (!fs.length) {
-        lista.appendChild(el('div', { class: 'hint', text: 'Nada encontrado. Tente outro termo ou limpe os filtros.' }));
+        lista.appendChild(el('div', { class: 'hint', text: 'Nada encontrado. Tente outro termo ou use o botão de limpar filtros.' }));
         return;
       }
-      for (const f of fs.slice(0, 60)) lista.appendChild(cartaoFonte(f));
+      /* Havia um `slice(0, 60)` aqui. Com 101 fontes no catálogo, 41 delas
+         — ViaCEP e Nominatim entre elas — nunca chegavam à tela, e o contador
+         logo acima dizia "101 de 101 fontes". Lista cortada em silêncio é pior
+         que lista longa: quem procura conclui que a fonte não existe. */
+      for (const f of fs) lista.appendChild(cartaoFonte(f));
     }
     desenhaLista();
 
@@ -20235,7 +20537,10 @@ const RECEITAS_ARQUIVO = [
     cab.appendChild(el('div', { class: 'fonte-nome', text: f.nome }));
     cab.appendChild(selo(f));
     c.appendChild(cab);
-    c.appendChild(el('div', { class: 'fonte-meta', text: f.org + ' · ' + ((F.DOMINIOS[f.dom] || {}).rot || f.dom) + (f.gran ? ' · ' + ((F.GRANS[f.gran] || {}).rot || f.gran) : '') }));
+    /* DOMINIOS guarda objeto ({rot}), GRANS guarda string. Ler `.rot` de uma
+       string dá undefined e o cartão caía no código cru — "municipio",
+       "contrato", "variavel" — em todas as 101 linhas da lista. */
+    c.appendChild(el('div', { class: 'fonte-meta', text: f.org + ' · ' + rotDom(f.dom) + (f.gran ? ' · ' + rotGran(f.gran) : '') }));
     c.appendChild(el('div', { class: 'fonte-desc', text: f.desc }));
 
     const acoes = el('div', { class: 'btn-row', style: { marginTop: '8px' } });
@@ -23064,6 +23369,478 @@ const RECEITAS_ARQUIVO = [
     render, renderArquivo, cartaoPedido, nomeDaBase, ofereceEncadear, valoresUteis,
     rotasQueAceitam, renderBusca
   };
+})();
+
+
+/* ==== 97-render-setorial.js ==== */
+/* ============================================================
+   97 — META SETORIAL: O FUNDO CONTRA OS PRÓPRIOS PARES
+
+   Comparar um fundo de ações contra o CDI diz pouco: quase toda a diferença
+   é prêmio de risco, não habilidade do gestor. A pergunta que importa —
+   "este gestor é bom?" — só tem resposta contra quem corre o MESMO risco.
+
+   A tela é desenhada em torno da mesma sequência de quatro números do
+   comparador, porque a armadilha aqui é ainda maior: contra a mediana do
+   grupo, METADE bate a meta por construção. Um ranking de alfa setorial sem
+   correção de múltiplas comparações é uma máquina de produzir gestores
+   geniais que não existem.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const FU = AG.fundos;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+  const pct = (v, c) => (v === null || v === undefined ? '—' : AG.fmtPct(v, c === undefined ? 1 : c));
+  const dia = (d) => (d === null || d === undefined ? '—' : AG.fmtDate(d instanceof Date ? d.getTime() : d));
+
+  /* Grupos montados à mão pelo usuário, por base. Vivem no módulo porque
+     são uma escolha da sessão, não um dado da fonte. */
+  const manuais = new Map();
+  const chaveDe = (ds) => (ds && (ds.id || ds.name)) || 'base';
+
+  /**
+   * "pares + 2%", "mediana do setor mais 2% ao ano", "acima do grupo em 1,5%".
+   * O prêmio exigido sobre os pares é a diferença entre "acompanhou o setor"
+   * e "justificou a taxa de administração".
+   */
+  function premioDaPergunta(plan) {
+    const q = AG.norm(plan && plan.question || '');
+    const m = /(pares|setor|grupo|classe|mediana|media)[^0-9]{0,18}(\d{1,2}(?:[.,]\d{1,2})?)\s*%/.exec(q);
+    return m ? parseFloat(m[2].replace(',', '.')) / 100 : 0;
+  }
+  /** "pela média do setor" troca a mediana — sob pedido explícito, nunca por padrão. */
+  function medidaDaPergunta(plan) {
+    return /\bmedia\b/.test(AG.norm(plan && plan.question || '')) &&
+      !/mediana/.test(AG.norm(plan && plan.question || '')) ? 'media' : 'mediana';
+  }
+
+  /* =========================================================
+     DE ONDE VEM O GRUPO
+     ========================================================= */
+  /**
+   * Três origens, uma saída. O motor recebe sempre um Map classe → [ids];
+   * quem monta esse Map é que muda. Assim a estatística não sabe — e não
+   * precisa saber — se a classificação veio da coluna, do cruzamento com o
+   * cadastro da CVM ou do dedo do usuário.
+   */
+  function gruposDe(ds, series, fmt) {
+    const man = manuais.get(chaveDe(ds));
+    if (man && man.size) {
+      const ids = new Set(series.map((s) => String(s.id)));
+      const g = new Map();
+      for (const [cls, lista] of man) {
+        const vivos = lista.filter((x) => ids.has(String(x)));
+        if (vivos.length) g.set(cls, vivos);
+      }
+      if (g.size) return { grupos: g, origem: 'manual', nome: 'grupos que você montou' };
+    }
+    const d = FU.detectarClasse(ds, series, fmt);
+    if (d.col) {
+      return {
+        grupos: d.grupos, origem: 'coluna', nome: d.nome,
+        cobertura: d.cobertura, candidatas: d.candidatas
+      };
+    }
+    /* Cruzamento com o cadastro: se o usuário carregou o fi-cad da CVM (ou
+       qualquer base com CNPJ + classe) numa SEGUNDA base, a classe vem de lá
+       casando pelo identificador. */
+    const cruz = doCadastroCarregado(series);
+    if (cruz) return cruz;
+    return { grupos: null, motivo: d.motivo };
+  }
+
+  const SO_DIGITO = (v) => String(v === null || v === undefined ? '' : v).replace(/\D+/g, '');
+
+  /**
+   * Procura, entre as OUTRAS bases carregadas, uma que tenha o identificador
+   * dos fundos e uma coluna de classe. É o caminho do cadastro da CVM sem
+   * pedir ao usuário que faça o cruzamento à mão.
+   */
+  function doCadastroCarregado(series) {
+    const todos = (AG.APP && AG.APP.datasets) || [];
+    if (todos.length < 2) return null;
+    /* Fundo é identificado por CNPJ com muita frequência: casar por dígito
+       evita que "00.000.000/0001-91" e "00000000000191" sejam dois fundos. */
+    const alvo = new Map();
+    for (const s of series) {
+      alvo.set(String(s.id), s);
+      const d = SO_DIGITO(s.id);
+      if (d.length >= 8) alvo.set('#' + d, s);
+    }
+    let melhor = null;
+    for (const outro of todos) {
+      if (!outro.rows || !outro.rows.length) continue;
+      /* `columns` com papel, não `dims`: o dataset não tem `dims`. */
+      const cols = (outro.columns || []).filter((c) =>
+        !c.virtual && (c.role === 'dimension' || c.role === 'id' || c.role === 'text'));
+      for (const cid of cols) {
+        for (const ccl of cols) {
+          if (ccl.key === cid.key) continue;
+          if (!FU.CLASSE_RE.test(AG.norm(ccl.label || ccl.key))) continue;
+          const mapa = new Map();
+          for (const r of outro.rows) {
+            const bruto = String(r[cid.key] === null || r[cid.key] === undefined ? '' : r[cid.key]);
+            const dig = SO_DIGITO(bruto);
+            const s = alvo.get(bruto) || (dig.length >= 8 ? alvo.get('#' + dig) : null);
+            if (!s) continue;
+            const v = r[ccl.key];
+            if (v === null || v === undefined || String(v).trim() === '') continue;
+            mapa.set(String(s.id), String(v).trim());
+          }
+          const cob = mapa.size / series.length;
+          if (cob < 0.5) continue;
+          const distintos = new Set(mapa.values()).size;
+          if (distintos < 2 || distintos >= mapa.size) continue;
+          if (!melhor || cob > melhor.cob) {
+            melhor = { cob: cob, mapa: mapa, base: outro.name || 'outra base', col: ccl.label || ccl.key };
+          }
+        }
+      }
+    }
+    if (!melhor) return null;
+    const g = new Map();
+    for (const [fid, cls] of melhor.mapa) {
+      if (!g.has(cls)) g.set(cls, []);
+      g.get(cls).push(fid);
+    }
+    return {
+      grupos: g, origem: 'cruzamento', nome: melhor.col,
+      cobertura: melhor.cob, base: melhor.base
+    };
+  }
+
+  /* =========================================================
+     A TELA
+     ========================================================= */
+  AG.renderers.finsetorial = function (body, ds, plan, question) {
+    const fmt = FU.detectarFormato(ds);
+    if (fmt.tipo === 'carteira') {
+      throw new Error('esta base é uma composição de carteira, sem série no tempo. Meta setorial precisa da ' +
+        'evolução da cota de cada fundo ao longo do período — uma linha por fundo por data.');
+    }
+    const rows = engine.applyFilters(ds, plan);
+    const todas = FU.extrairSeries(ds, fmt, rows);
+    if (todas.length < 4) {
+      throw new Error('achei ' + todas.length + ' série(s). A meta setorial é a mediana dos PARES de cada fundo, ' +
+        'calculada sem ele: com menos de 4 fundos sobram 2 pares ou menos, e a mediana de 2 não descreve setor nenhum. ' +
+        'Para comparar poucos fundos entre si, peça "comparar os fundos".');
+    }
+
+    const org = gruposDe(ds, todas, fmt);
+    if (!org.grupos) return semClassificacao(body, ds, todas, org, question, plan);
+
+    const jan = FU.janelaComum(todas, {});
+    if (!jan || !jan.series.length) throw new Error((jan && jan.erro) || 'não consegui montar uma janela comum entre as séries');
+
+    const spreadAno = premioDaPergunta(plan);
+    const medida = medidaDaPergunta(plan);
+    const meta = FU.metaSetorial(jan.series, org.grupos, { spreadAno: spreadAno, medida: medida, minPares: 3 });
+
+    if (!meta.itens.length) return semGrupoGrande(body, ds, todas, org, meta, question, plan);
+
+    const porId = new Map(jan.series.map((s) => [String(s.id), s]));
+    const itens = meta.itens.map((it) => {
+      const s = porId.get(String(it.id));
+      const base = FU.metricas(s, {});
+      return Object.assign(base, {
+        id: it.id, label: it.label, classe: it.classe, pares: it.pares,
+        periodos: it.periodos, ppa: it.ppa,
+        bench: FU.contraBenchmark(s, it.bench, {}),
+        benchSerie: it.bench
+      });
+    }).filter((x) => x.bench);
+    if (!itens.length) {
+      throw new Error('nenhum fundo teve períodos suficientes em comum com os próprios pares para o teste. ' +
+        'Costuma acontecer quando os fundos reportam em datas diferentes dentro do mesmo mês.');
+    }
+    const fdr = FU.sobrevivemAoFDR(itens, 0.05);
+    itens.sort((a, b) => (b.bench.excessoMedio || -Infinity) - (a.bench.excessoMedio || -Infinity));
+
+    const nClasses = new Set(itens.map((x) => x.classe)).size;
+    head(body, 'Meta setorial: ' + itens.length + ' fundos contra os próprios pares',
+      nClasses + ' grupo(s) · ' + dia(jan.inicio) + ' a ' + dia(jan.fim) +
+      ' · meta = <b>' + (medida === 'media' ? 'média' : 'mediana') + ' dos pares</b>, calculada sem o próprio fundo' +
+      (spreadAno ? ' <b>+ ' + AG.fmtPct(spreadAno, 1) + ' a.a.</b>' : ''));
+
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Comparados', String(itens.length), 'com pares suficientes'),
+      U().kpi('Batem a meta no papel', String(fdr.acimaNoPapel),
+        'num grupo de pares, ~metade bate por construção'),
+      U().kpi('Passam no teste', String(fdr.brutos), 'p < 0,05, sem correção'),
+      U().kpi('Sobrevivem ao FDR', String(fdr.sobreviventes),
+        'Benjamini–Hochberg a 5% — é este o número')
+    ]));
+
+    /* O ponto que a tela existe para fazer, dito antes da tabela. */
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      '<b>Bater a meta não é a mesma coisa que ter habilidade.</b> A meta é a ' +
+      (medida === 'media' ? 'média' : 'mediana') + ' dos pares: num grupo de ' + itens.length + ' fundos, ' +
+      'cerca de ' + Math.round(itens.length / 2) + ' ficariam acima dela mesmo que nenhum gestor soubesse o que está fazendo. ' +
+      'Por isso a coluna que decide não é o alfa — é a última: <b>' + fdr.sobreviventes + ' de ' + itens.length +
+      '</b> resistem à correção de múltiplas comparações.')));
+
+    body.appendChild(U().insightNode(ins('good', '✓',
+      '<b>Cada fundo é medido contra os pares SEM ele.</b> Se o próprio fundo entrasse no cálculo da sua meta, ' +
+      'ele competiria contra si mesmo: num grupo de ' + itens.length + ' ele teria ' +
+      AG.fmtPct(1 / itens.length, 0) + ' de peso na meta que precisa bater, e o alfa medido encolheria na ' +
+      'direção de zero. É um erro que não deixa rastro na tela — os números continuam plausíveis.')));
+
+    body.appendChild(U().insightNode(ins(org.origem === 'manual' ? 'good' : 'info', '⊞', textoOrigem(org, itens))));
+
+    if (meta.recusados.length) {
+      const porClasse = {};
+      for (const r of meta.recusados) porClasse[r.classe] = r;
+      const lista = Object.keys(porClasse).slice(0, 5)
+        .map((c) => '<b>' + AG.esc(c) + '</b> (' + AG.esc(porClasse[c].motivo) + ')').join('; ');
+      body.appendChild(U().insightNode(ins('warn', '⚠',
+        'Ficaram de fora ' + Object.keys(porClasse).length + ' grupo(s) por serem pequenos demais: ' + lista +
+        '. Um grupo precisa de <b>4 membros</b> para que cada fundo sobre com 3 pares depois de sair do próprio cálculo.')));
+    }
+    if (jan.encerrados && jan.encerrados.length) {
+      body.appendChild(U().insightNode(ins('crit', '✕',
+        '<b>Viés de sobrevivência:</b> ' + jan.encerrados.length + ' fundo(s) pararam de reportar antes do fim. ' +
+        'Isso empurra a meta do setor para CIMA — a mediana passa a ser a dos que deram certo — e faz todo mundo ' +
+        'parecer pior do que foi. O sentido do viés aqui é o contrário do de um ranking simples.')));
+    }
+
+    /* --- a tabela --- */
+    const td = {
+      columns: [
+        { key: 'fundo', label: 'Fundo' },
+        { key: 'classe', label: 'Grupo' },
+        { key: 'pares', label: 'Pares', format: 'number' },
+        { key: 'fundoR', label: 'Fundo (a.a.)', format: 'percent' },
+        { key: 'metaR', label: 'Meta dos pares (a.a.)', format: 'percent' },
+        { key: 'alfa', label: 'Alfa (a.a.)', format: 'percent' },
+        { key: 'te', label: 'Erro de rastreamento', format: 'percent' },
+        { key: 'ir', label: 'Índice de informação', format: 'number' },
+        { key: 'p', label: 'p', format: 'number' },
+        { key: 'sit', label: 'Resiste ao FDR?' }
+      ],
+      rows: itens.map((x) => {
+        const ppa = x.ppa || 12;
+        const alfaAno = x.bench.excessoMedio === null ? null : x.bench.excessoMedio * ppa;
+        const fundoAno = x.bench.acumAtivo === null ? null : anualiza(x.bench.acumAtivo, x.bench.n, ppa);
+        const metaAno = x.bench.acumBench === null ? null : anualiza(x.bench.acumBench, x.bench.n, ppa);
+        return {
+          fundo: x.label, classe: x.classe, pares: x.pares,
+          fundoR: fundoAno, metaR: metaAno, alfa: alfaAno,
+          te: x.bench.trackingError, ir: x.bench.informationRatio, p: x.bench.p,
+          sit: x.significativoFDR ? 'sim' : x.significativoBruto ? 'só sem correção' :
+            (x.bench.excessoMedio > 0 ? 'não — dentro do acaso' : 'abaixo dos pares')
+        };
+      })
+    };
+    const cTab = charts.card({
+      title: 'Cada fundo contra a mediana dos seus pares',
+      subtitle: 'ordenado por alfa; a meta de cada linha exclui o próprio fundo',
+      tableData: td
+    });
+    cTab.body.appendChild(charts.dataTable(td));
+    body.appendChild(cTab.wrap);
+
+    /* --- o alfa em barras, colorido pelo que sobrevive --- */
+    const cB = charts.card({
+      title: 'Alfa sobre os pares, ao ano',
+      subtitle: 'verde: resiste ao FDR · âmbar: só passa sem correção · cinza: dentro do acaso'
+    });
+    charts.renderInto(cB.body, (w) => charts.barsH({
+      width: w, format: 'percent', measureLabel: 'Alfa a.a.',
+      data: itens.map((x) => ({
+        label: x.label.slice(0, 34),
+        value: (x.bench.excessoMedio || 0) * (x.ppa || 12),
+        color: x.significativoFDR ? AG.PALETTE[2] : x.significativoBruto ? AG.PALETTE[3] : AG.PALETTE[0]
+      }))
+    }));
+    body.appendChild(cB.wrap);
+
+    if (!fdr.sobreviventes) {
+      body.appendChild(U().insightNode(ins('warn', '⚠',
+        '<b>Nenhum fundo sobrevive à correção.</b> Não quer dizer que todos sejam iguais — quer dizer que esta janela ' +
+        'não tem poder para distinguir habilidade de sorte' +
+        (fdr.alfaMinimo ? '. Com ' + itens[0].bench.n + ' observações, o menor alfa que esta amostra conseguiria ' +
+          'detectar é de cerca de <b>' + AG.fmtPct(fdr.alfaMinimo, 1) + ' ao ano</b> — abaixo disso, o teste é cego' : '') +
+        '. Mais tempo, ou um grupo mais homogêneo, muda esse número.')));
+    }
+
+    body.appendChild(botaoMontarGrupo(ds, todas, question));
+    foot(body, question, plan, ds, rows.length);
+    return { headline: itens.length + ' fundos contra os pares · ' + fdr.sobreviventes + ' resistem ao FDR' };
+  };
+
+  /** Retorno acumulado → taxa anual equivalente, pelo nº de períodos e ppa. */
+  function anualiza(acum, n, ppa) {
+    if (acum === null || !n || !ppa) return null;
+    const anos = n / ppa;
+    if (!(anos > 0) || acum <= -1) return null;
+    return Math.pow(1 + acum, 1 / anos) - 1;
+  }
+
+  function textoOrigem(org, itens) {
+    const classes = Array.from(new Set(itens.map((x) => x.classe)));
+    const lista = classes.slice(0, 6).map((c) => AG.esc(c)).join(', ') + (classes.length > 6 ? ' e outros' : '');
+    if (org.origem === 'manual') {
+      return '<b>Os grupos são os que você montou</b> nesta sessão: ' + lista +
+        '. Nada foi adivinhado a partir da base.';
+    }
+    if (org.origem === 'cruzamento') {
+      return '<b>A classificação veio de outra base carregada</b> (' + AG.esc(org.base) + '), pela coluna <b>' +
+        AG.esc(org.nome) + '</b>, casando pelo identificador do fundo — ' +
+        AG.fmtPct(org.cobertura, 0) + ' dos fundos foram encontrados lá. Grupos: ' + lista + '.';
+    }
+    return '<b>Os grupos vieram da coluna <code>' + AG.esc(org.nome) + '</code></b> da própria base, escolhida por ser ' +
+      'constante dentro de cada fundo — o que muda de linha em linha é medida, não classificação. Grupos: ' + lista + '.' +
+      (org.candidatas && org.candidatas.length
+        ? ' Outras colunas serviriam: ' + org.candidatas.map((x) => '<code>' + AG.esc(x) + '</code>').join(', ') +
+          ' — use o botão abaixo para montar o grupo à mão.'
+        : '');
+  }
+
+  /* =========================================================
+     QUANDO NÃO DÁ: DIZER O QUE FALTOU, NÃO DEVOLVER VAZIO
+     ========================================================= */
+  function semClassificacao(body, ds, series, org, question, plan) {
+    head(body, 'Falta dizer quem é par de quem',
+      series.length + ' fundos na base, mas nenhum grupo para comparar');
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      '<b>A meta setorial precisa saber a qual grupo cada fundo pertence</b>, e ' + AG.esc(org.motivo || 'não achei essa informação') + '.')));
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'Há três caminhos, e todos funcionam sem sair do seu computador:<br>' +
+      '<b>1.</b> Carregue a base com uma coluna de classe, segmento, categoria ou gestora — o agente detecta sozinho.<br>' +
+      '<b>2.</b> Carregue o <b>cadastro de fundos da CVM</b> (<code>fi-cad</code>) como uma segunda base: ele traz a classe oficial ' +
+      'por CNPJ, e o cruzamento é feito aqui.<br>' +
+      '<b>3.</b> Monte o grupo na tela, no botão abaixo — é o caminho para recortes que coluna nenhuma tem, ' +
+      'como "os cinco concorrentes diretos".')));
+    body.appendChild(botaoMontarGrupo(ds, series, question));
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: 'faltou a classificação dos fundos' };
+  }
+
+  function semGrupoGrande(body, ds, series, org, meta, question, plan) {
+    head(body, 'Nenhum grupo tem pares suficientes',
+      meta.recusados.length + ' grupo(s) examinados');
+    const linhas = meta.recusados.slice(0, 8).map((r) =>
+      '<li><b>' + AG.esc(r.classe) + '</b> — ' + (r.membros || 0) + ' membro(s); ' + AG.esc(r.motivo) + '</li>').join('');
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      'Para um fundo ser medido contra os pares, o grupo dele precisa de <b>4 membros</b>: tirando o próprio fundo, ' +
+      'sobram 3, que é o mínimo para uma mediana significar algo.<ul>' + linhas + '</ul>' +
+      'Junte grupos vizinhos no botão abaixo — "Ações Livre" e "Ações Indexado" viram um grupo de ações só.')));
+    body.appendChild(botaoMontarGrupo(ds, series, question));
+    foot(body, question, plan, ds, ds.rows.length);
+    return { headline: 'nenhum grupo com 4 membros' };
+  }
+
+  /* =========================================================
+     MONTAR O GRUPO NA TELA
+     ========================================================= */
+  function botaoMontarGrupo(ds, series, question) {
+    const row = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
+    row.appendChild(el('button', {
+      class: 'btn sm primary', text: '⊞ Montar os grupos na tela',
+      onclick: () => abrirMontador(ds, series, question)
+    }));
+    if (manuais.get(chaveDe(ds))) {
+      row.appendChild(el('button', {
+        class: 'btn sm ghost', text: 'Esquecer os grupos que montei',
+        onclick: () => { manuais.delete(chaveDe(ds)); AG.toast('Grupos manuais apagados — pergunte de novo.'); }
+      }));
+    }
+    return row;
+  }
+
+  function abrirMontador(ds, series, question) {
+    const atual = manuais.get(chaveDe(ds)) || new Map();
+    /* id → nome do grupo, que é a forma mais fácil de editar: um fundo
+       pertence a um grupo só, e trocar o texto move o fundo. */
+    const destino = new Map();
+    for (const [cls, ids] of atual) for (const id of ids) destino.set(String(id), cls);
+
+    const corpo = el('div');
+    corpo.appendChild(el('div', {
+      class: 'hint', style: { marginBottom: '10px' },
+      html: 'Escreva o nome do grupo ao lado de cada fundo. Fundos com o <b>mesmo nome de grupo</b> viram pares. ' +
+        'Deixe em branco para tirar o fundo da comparação. ' +
+        'Um grupo precisa de <b>4 fundos</b> para valer — cada um é medido contra os outros 3.'
+    }));
+
+    const sugeridos = Array.from(new Set(Array.from(destino.values()))).filter(Boolean);
+    const dl = el('datalist', { id: 'grupos-sugeridos' });
+    for (const g of sugeridos) dl.appendChild(el('option', { value: g }));
+    corpo.appendChild(dl);
+
+    const contagem = el('div', { class: 'hint', style: { margin: '8px 0' } });
+    const campos = [];
+    const grade = el('div', { class: 'params-grid' });
+    for (const s of series) {
+      const wrap = el('div');
+      wrap.appendChild(el('label', { class: 'param-rot', text: s.label.slice(0, 44) }));
+      const inp = el('input', {
+        class: 'inp', list: 'grupos-sugeridos', placeholder: 'nome do grupo',
+        value: destino.get(String(s.id)) || ''
+      });
+      inp.value = destino.get(String(s.id)) || '';
+      inp.addEventListener('input', atualiza);
+      campos.push({ id: String(s.id), inp: inp });
+      wrap.appendChild(inp);
+      grade.appendChild(wrap);
+    }
+    corpo.appendChild(grade);
+    corpo.appendChild(contagem);
+
+    function lerGrupos() {
+      const g = new Map();
+      for (const c of campos) {
+        const v = c.inp.value.trim();
+        if (!v) continue;
+        if (!g.has(v)) g.set(v, []);
+        g.get(v).push(c.id);
+      }
+      return g;
+    }
+    function atualiza() {
+      const g = lerGrupos();
+      if (!g.size) { contagem.innerHTML = 'Nenhum grupo montado ainda.'; return; }
+      const partes = [];
+      for (const [k, v] of g) {
+        partes.push('<b>' + AG.esc(k) + '</b>: ' + v.length +
+          (v.length < 4 ? ' <span style="color:var(--warn)">(faltam ' + (4 - v.length) + ')</span>' : ' ✓'));
+      }
+      const validos = Array.from(g.values()).filter((v) => v.length >= 4).length;
+      contagem.innerHTML = partes.join(' · ') + '<br>' + validos + ' de ' + g.size + ' grupo(s) com tamanho suficiente.';
+    }
+    atualiza();
+
+    const dlg = AG.modal('Montar os grupos de comparação', corpo, [
+      el('button', { class: 'btn', text: 'Cancelar', onclick: () => dlg.close() }),
+      el('button', {
+        class: 'btn primary', text: 'Usar estes grupos',
+        onclick: () => {
+          const g = lerGrupos();
+          dlg.close();
+          if (!g.size) { manuais.delete(chaveDe(ds)); AG.toast('Nenhum grupo definido.'); return; }
+          manuais.set(chaveDe(ds), g);
+          const ok = Array.from(g.values()).filter((v) => v.length >= 4).length;
+          AG.toast(ok ? ok + ' grupo(s) prontos — refazendo a análise.' : 'Nenhum grupo chegou a 4 fundos.');
+          /* Refazer a pergunta é o que fecha o ciclo: o usuário monta o grupo
+             e vê a resposta nova, sem ter de redigitar nada. */
+          AG.ask(question || 'meta setorial dos fundos');
+        }
+      })
+    ]);
+  }
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, n) {
+    body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: ds.rows.length, rowsMatched: n, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+
+  AG.setorialUI = { gruposDe, doCadastroCarregado, premioDaPergunta, medidaDaPergunta, manuais, abrirMontador };
 })();
 
 </script>
