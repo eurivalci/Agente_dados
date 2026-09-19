@@ -439,6 +439,39 @@ table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.tbl tr:hover td { background: var(--surface-2); }
 table.tbl tr.drillable { cursor: pointer; }
 
+/* ---------- tabela viva: barra, filtros por coluna, paginação ----------
+   O indicador de ordem é desenhado AQUI, por `::after` sobre o atributo
+   data-ord, e nunca como texto dentro do <th>. Uma seta no textContent
+   quebraria toda leitura de cabeçalho — a das suítes e a de quem copia a
+   tabela para a planilha. */
+.tv { min-width: 0; }
+.tv-barra { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.tv-barra .spacer { flex: 1 1 auto; }
+.tv-busca { flex: 0 1 260px; min-width: 140px; }
+.tv-contagem { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; }
+.tv-filtros {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px;
+  padding: 10px; margin-bottom: 8px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-2); min-width: 0;
+}
+.tv-f { min-width: 0; }
+.tv-f-rot {
+  display: block; font-size: 10.5px; font-weight: 620; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--text-secondary); margin-bottom: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tv-f-par { display: flex; gap: 4px; min-width: 0; }
+.tv-f-par .inp { min-width: 0; flex: 1 1 0; }
+.tv-f-sel { width: 100%; min-width: 0; padding: 4px; font-size: 11.5px; }
+.tv-col-op { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 0; }
+.tv-rodape { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.tv-rodape:empty { margin-top: 0; }
+
+table.tbl th.tv-th { cursor: pointer; user-select: none; }
+table.tbl th.tv-th:hover { color: var(--text-primary); }
+table.tbl th.tv-th[data-ord="asc"]::after { content: " ▲"; font-size: 9px; opacity: .85; }
+table.tbl th.tv-th[data-ord="desc"]::after { content: " ▼"; font-size: 9px; opacity: .85; }
+
 /* ---------- rodapé do turno: feedback / plano ---------- */
 .turn-foot { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .fb-btn {
@@ -5694,7 +5727,7 @@ const RECEITAS_ARQUIVO = [
     { intent: 'trend', re: /(evolucao|evoluir|ao longo|tendencia|serie historica|historico|por mes|por ano|por dia|por semana|por trimestre|por quinzena|mensal|anual|trimestral|semanal|diaria|diario|variacao no tempo|linha do tempo|trajetoria)/ },
     { intent: 'distribution', re: /(distribuicao|composicao|participacao|share|percentual por|proporcao|reparticao|peso de|fatia|concentracao)/ },
     { intent: 'ranking', re: /(top\s*\d+|maiores|menores|melhores|piores|ranking|rank|principais|maior|menor|classificacao|classificar|ordenar|quem mais|quais mais|lider)/ },
-    { intent: 'detail', re: /(detalh|listar|liste|mostrar registros|amostra|quais sao os registros|abrir|drill|itens)/ },
+    { intent: 'detail', re: /(detalh|listar|liste|lista (de|dos|das|completa)|relacao (de|dos|das|completa)|mostrar registros|mostre os (dados|registros)|ver os (dados|registros)|linha a linha|todos os registros|registros da base|amostra|quais sao os registros|abrir|drill|itens|tabela (completa|com os dados|dos dados))/ },
     { intent: 'compare', re: /(compar|versus| vs |frente a|em relacao a)/ },
     { intent: 'total', re: /(total|soma|somatorio|quanto (foi|e|deu|temos|gastamos|faturamos|custou|custa)|valor total|montante|qual o total|gasto|gastos|gastou|gastaram|despesa|despesas|empenhado|receita|faturamento|volume financeiro)/ }
   ];
@@ -8853,7 +8886,7 @@ const RECEITAS_ARQUIVO = [
         class: 'btn sm ghost', text: 'Tabela',
         onclick: () => {
           const showing = tableBox.style.display !== 'none';
-          if (!tableBuilt) { tableBox.appendChild(dataTable(opts.tableData)); tableBuilt = true; }
+          if (!tableBuilt) { tableBox.appendChild(dataTable(opts.tableData, { titulo: opts.title })); tableBuilt = true; }
           tableBox.style.display = showing ? 'none' : 'block';
           btn.textContent = showing ? 'Tabela' : 'Ocultar tabela';
         }
@@ -8879,14 +8912,28 @@ const RECEITAS_ARQUIVO = [
     return { wrap, body, head };
   }
 
-  function dataTable(td) {
+  /**
+   * Toda tabela do agente nasce VIVA: ordena, filtra por coluna, busca,
+   * pagina. A implementação mora no módulo 71 e é uma só — assim o "Tabela"
+   * de cada cartão, a lâmina, a meta setorial e as visões contábeis herdam o
+   * mesmo comportamento sem uma linha em cada uma.
+   *
+   * O fallback estático existe para os contextos onde o módulo 71 não está
+   * carregado: o relatório imprimível e o painel exportado, que são HTML sem
+   * o agente atrás. Lá tabela interativa não faria sentido mesmo.
+   */
+  function dataTable(td, opts) {
+    if (AG.tabela && AG.tabela.viva) return AG.tabela.viva(td, opts);
+    return dataTableEstatica(td);
+  }
+  function dataTableEstatica(td) {
     const box = el('div', { class: 'tbl-wrap' });
     const t = el('table', { class: 'tbl' });
     const thead = el('thead');
     thead.appendChild(el('tr', {}, td.columns.map((c) => el('th', { text: c.label }))));
     t.appendChild(thead);
     const tb = el('tbody');
-    for (const r of td.rows.slice(0, 2000)) {
+    for (const r of td.rows) {
       tb.appendChild(el('tr', {}, td.columns.map((c) => {
         const v = r[c.key];
         const isNum = typeof v === 'number';
@@ -9966,9 +10013,471 @@ const RECEITAS_ARQUIVO = [
     return container;
   }
 
-  AG.charts = { card, barsH, columns, timeChart, donut, scatter, heatmap, waterfall, histogram, diverging, stackedBars,
+  AG.charts = { card, dataTableEstatica, barsH, columns, timeChart, donut, scatter, heatmap, waterfall, histogram, diverging, stackedBars,
     benfordChart, boxplot, geoScatter, inkOn,
     rampLegend, legend, dataTable, exportCSV, niceTicks, renderInto, showTip, hideTip, moveTip, ttRow };
+})();
+
+
+/* ==== 71-tabela.js ==== */
+/* ============================================================
+   71 — TABELA VIVA
+
+   Toda tabela do agente passa por aqui. Até agora elas eram inertes: não
+   ordenavam, não filtravam, e cortavam em 2.000 linhas EM SILÊNCIO — o mesmo
+   defeito da lista de fontes cortada em 60, que fez 41 fontes não existirem
+   para quem olhava. Lista cortada sem avisar é pior que lista longa.
+
+   Três decisões que valem ser ditas:
+
+   1. UMA IMPLEMENTAÇÃO SÓ. `charts.dataTable` delega para cá, então o
+      "Tabela" de cada cartão, a lâmina, a meta setorial, as visões contábeis
+      e o comparador ganham o mesmo comportamento sem uma linha de código
+      em cada um. Recurso que precisa ser repetido por tela é recurso que
+      vai faltar em alguma.
+
+   2. O FILTRO DA TABELA NÃO É O FILTRO DO AGENTE. Filtrar aqui é explorar:
+      nada mais na tela muda. Se o recorte for bom, um botão o PROMOVE a
+      filtro do agente e aí sim tudo recalcula. Explorar sem medo, aplicar
+      de propósito.
+
+   3. O CONTROLE É DO TIPO DA COLUNA. Texto pede "contém", número pede faixa,
+      data pede período, e categoria com poucos valores pede lista de marcar.
+      Oferecer uma caixa de texto para filtrar dinheiro é empurrar para o
+      usuário um trabalho que o agente já sabe fazer: ele conhece o papel de
+      cada coluna desde o perfilamento.
+
+   Detalhe de compatibilidade que parece bobo e não é: o indicador de ordem
+   é desenhado por CSS (`::after` sobre um atributo), nunca como texto dentro
+   do `<th>`. Um caractere de seta no textContent quebraria toda leitura de
+   cabeçalho — a das suítes de teste e a de quem copia a tabela.
+   ============================================================ */
+
+(function () {
+  const el = AG.el;
+  const PAGINA = 200;          // a partir daqui aparece paginação, com contagem à vista
+  const MAX_CATEGORIAS = 25;   // acima disso, lista de marcar vira parede: cai para "contém"
+
+  /* ---------- tipo do dado, para escolher o controle e a ordenação ---------- */
+  function tipoDaColuna(td, c) {
+    if (c.tipo) return c.tipo;                                   // quem chama pode declarar
+    if (/percent|currency|number|int/.test(String(c.format || ''))) return 'numero';
+    const vals = [];
+    for (const r of td.rows) {
+      const v = r[c.key];
+      if (v === null || v === undefined || v === '') continue;
+      vals.push(v);
+      if (vals.length >= 200) break;
+    }
+    if (!vals.length) return 'texto';
+    const nums = vals.filter((v) => typeof v === 'number' && isFinite(v)).length;
+    if (nums / vals.length >= 0.8) {
+      /* Timestamp é número e data ao mesmo tempo. O que separa os dois é a
+         ORDEM DE GRANDEZA: valor acima de ~1e11 em toda a coluna é data. */
+      const datas = vals.filter((v) => typeof v === 'number' && v > 1e11 && v < 4e12).length;
+      return datas / vals.length >= 0.8 ? 'data' : 'numero';
+    }
+    const distintos = new Set(vals.map((v) => String(v)));
+    return distintos.size <= MAX_CATEGORIAS && distintos.size < vals.length * 0.6 ? 'categoria' : 'texto';
+  }
+
+  const txt = (v) => (v === null || v === undefined ? '' : String(v));
+  const norm = (v) => AG.norm(txt(v));
+  function numDe(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(String(v).replace(/\./g, '').replace(',', '.').replace(/[^\d.\-]/g, ''));
+    return isFinite(n) ? n : null;
+  }
+  function celulaTexto(v, c) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'number') {
+      if (c && /date|data/.test(String(c.format || '')) ) return AG.fmtDate(v);
+      return AG.fmtNum(v, c && c.format);
+    }
+    return String(v);
+  }
+
+  /* =========================================================
+     A TABELA
+     ========================================================= */
+  /**
+   * @param td   { columns:[{key,label,format}], rows:[{}] }
+   * @param opts { titulo, plan, ds, semFiltros, semPaginacao }
+   */
+  function viva(td, opts) {
+    const o = opts || {};
+    const colunas = (td.columns || []).map((c) => Object.assign({}, c, { _tipo: tipoDaColuna(td, c) }));
+    const ocultas = new Set();
+    const filtros = {};                 // key → {contem} | {min,max} | {escolhidos:Set} | {de,ate}
+    let busca = '';
+    let ordem = null;                   // {key, dir}
+    let pagina = 0;
+
+    const raiz = el('div', { class: 'tv' });
+    const barra = el('div', { class: 'tv-barra' });
+    const linhaFiltros = el('div', { class: 'tv-filtros', style: { display: 'none' } });
+    const caixa = el('div', { class: 'tbl-wrap' });
+    const rodape = el('div', { class: 'tv-rodape' });
+
+    /* ---------- o que sobra depois de busca e filtros ---------- */
+    function visiveis() {
+      const b = AG.norm(busca);
+      const termos = b ? b.split(' ').filter(Boolean) : [];
+      return (td.rows || []).filter((r) => {
+        if (termos.length) {
+          /* Busca global: todo termo tem de aparecer em ALGUMA coluna. A
+             mesma regra da busca do catálogo — assim "fortaleza 2024" não
+             devolve tudo que tem 2024. */
+          const alvo = colunas.map((c) => norm(r[c.key])).join(' ');
+          for (const t of termos) if (alvo.indexOf(t) < 0) return false;
+        }
+        for (const c of colunas) {
+          const f = filtros[c.key];
+          if (!f) continue;
+          const v = r[c.key];
+          if (f.contem !== undefined && f.contem !== '') {
+            if (norm(v).indexOf(AG.norm(f.contem)) < 0) return false;
+          }
+          if (f.min !== undefined || f.max !== undefined) {
+            const n = numDe(v);
+            if (n === null) return false;
+            if (f.min !== undefined && n < f.min) return false;
+            if (f.max !== undefined && n > f.max) return false;
+          }
+          if (f.escolhidos && f.escolhidos.size) {
+            if (!f.escolhidos.has(txt(v))) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    function ordenadas(linhas) {
+      if (!ordem) return linhas;
+      const c = colunas.find((x) => x.key === ordem.key);
+      if (!c) return linhas;
+      const sinal = ordem.dir === 'desc' ? -1 : 1;
+      const numerico = c._tipo === 'numero' || c._tipo === 'data';
+      /* Ordenação estável e do TIPO CERTO: ordenar número como texto põe
+         "100" antes de "9", que é o erro clássico de tabela de painel. */
+      return linhas.map((r, i) => ({ r: r, i: i })).sort((a, b) => {
+        const va = a.r[c.key], vb = b.r[c.key];
+        const na = va === null || va === undefined || va === '';
+        const nb = vb === null || vb === undefined || vb === '';
+        if (na && nb) return a.i - b.i;
+        if (na) return 1;                       // vazio sempre no fim, nos dois sentidos
+        if (nb) return -1;
+        let d;
+        if (numerico) {
+          const x = numDe(va), y = numDe(vb);
+          d = (x === null ? 0 : x) - (y === null ? 0 : y);
+        } else {
+          d = txt(va).localeCompare(txt(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+        }
+        return d !== 0 ? d * sinal : a.i - b.i;
+      }).map((x) => x.r);
+    }
+
+    /* ---------- barra de cima ---------- */
+    const inpBusca = el('input', { class: 'inp tv-busca', placeholder: 'Buscar em todas as colunas…' });
+    inpBusca.addEventListener('input', () => { busca = inpBusca.value; pagina = 0; desenha(); });
+
+    const btnFiltros = el('button', {
+      class: 'btn sm ghost', text: '⛃ Filtros',
+      onclick: () => {
+        const aberto = linhaFiltros.style.display !== 'none';
+        linhaFiltros.style.display = aberto ? 'none' : '';
+        btnFiltros.classList[aberto ? 'remove' : 'add']('sel');
+      }
+    });
+    const btnColunas = el('button', { class: 'btn sm ghost', text: '▦ Colunas', onclick: () => abrirColunas() });
+    const contagem = el('span', { class: 'tv-contagem' });
+    const btnLimpar = el('button', {
+      class: 'btn sm ghost tv-limpar', text: 'Limpar', style: { display: 'none' },
+      onclick: () => {
+        busca = ''; inpBusca.value = '';
+        for (const k in filtros) delete filtros[k];
+        ordem = null; pagina = 0;
+        montaFiltros(); desenha();
+      }
+    });
+    /* Promover é ação deliberada e só aparece quando há o que promover. O
+       filtro da tabela é exploração; virar filtro do agente muda gráficos,
+       KPIs e leituras, e isso não pode acontecer por acidente de digitação. */
+    const btnPromover = el('button', {
+      class: 'btn sm primary tv-promover', text: '↑ Usar este recorte', style: { display: 'none' },
+      onclick: () => promover()
+    });
+    const btnCSV = el('button', {
+      class: 'btn sm ghost tv-csv', text: '⭳ Só o filtrado', style: { display: 'none' },
+      onclick: () => AG.charts.exportCSV(
+        { columns: colunas.filter((c) => !ocultas.has(c.key)), rows: ordenadas(visiveis()) },
+        (o.titulo || 'dados') + '-filtrado')
+    });
+
+    barra.appendChild(inpBusca);
+    if (!o.semFiltros) barra.appendChild(btnFiltros);
+    barra.appendChild(btnColunas);
+    barra.appendChild(el('span', { class: 'spacer' }));
+    barra.appendChild(contagem);
+    barra.appendChild(btnCSV);
+    barra.appendChild(btnLimpar);
+    barra.appendChild(btnPromover);
+
+    /* ---------- um controle por coluna, do tipo da coluna ---------- */
+    function montaFiltros() {
+      linhaFiltros.innerHTML = '';
+      for (const c of colunas) {
+        if (ocultas.has(c.key)) continue;
+        const cel = el('div', { class: 'tv-f' });
+        cel.appendChild(el('label', { class: 'tv-f-rot', text: c.label }));
+        if (c._tipo === 'numero') {
+          const mk = (qual, ph) => {
+            const i = el('input', { class: 'inp tv-f-num', placeholder: ph, inputmode: 'decimal' });
+            i.value = filtros[c.key] && filtros[c.key][qual] !== undefined ? String(filtros[c.key][qual]) : '';
+            i.addEventListener('input', () => {
+              const n = numDe(i.value);
+              filtros[c.key] = filtros[c.key] || {};
+              if (i.value.trim() === '' || n === null) delete filtros[c.key][qual];
+              else filtros[c.key][qual] = n;
+              if (!Object.keys(filtros[c.key]).length) delete filtros[c.key];
+              pagina = 0; desenha();
+            });
+            return i;
+          };
+          const par = el('div', { class: 'tv-f-par' });
+          par.appendChild(mk('min', 'mín')); par.appendChild(mk('max', 'máx'));
+          cel.appendChild(par);
+        } else if (c._tipo === 'categoria') {
+          const vals = Array.from(new Set(td.rows.map((r) => txt(r[c.key])))).sort((a, b) =>
+            a.localeCompare(b, 'pt-BR', { numeric: true }));
+          const sel = el('select', { class: 'inp tv-f-sel', multiple: true, size: String(Math.min(5, vals.length)) });
+          for (const v of vals) {
+            const op = el('option', { value: v, text: v === '' ? '(vazio)' : v });
+            if (filtros[c.key] && filtros[c.key].escolhidos && filtros[c.key].escolhidos.has(v)) op.selected = true;
+            sel.appendChild(op);
+          }
+          sel.addEventListener('change', () => {
+            const esc = new Set(Array.from(sel.selectedOptions).map((x) => x.value));
+            if (esc.size) filtros[c.key] = { escolhidos: esc }; else delete filtros[c.key];
+            pagina = 0; desenha();
+          });
+          cel.appendChild(sel);
+        } else if (c._tipo === 'data') {
+          const par = el('div', { class: 'tv-f-par' });
+          const mk = (qual, ph) => {
+            const i = el('input', { class: 'inp tv-f-num', type: 'date', title: ph });
+            i.addEventListener('change', () => {
+              filtros[c.key] = filtros[c.key] || {};
+              const t = i.value ? Date.parse(i.value + 'T00:00:00Z') : null;
+              if (t === null || !isFinite(t)) delete filtros[c.key][qual];
+              else filtros[c.key][qual] = qual === 'max' ? t + 86399999 : t;
+              if (!Object.keys(filtros[c.key]).length) delete filtros[c.key];
+              pagina = 0; desenha();
+            });
+            return i;
+          };
+          par.appendChild(mk('min', 'de')); par.appendChild(mk('max', 'até'));
+          cel.appendChild(par);
+        } else {
+          const i = el('input', { class: 'inp tv-f-txt', placeholder: 'contém…' });
+          i.value = (filtros[c.key] && filtros[c.key].contem) || '';
+          i.addEventListener('input', () => {
+            if (i.value.trim() === '') delete filtros[c.key];
+            else filtros[c.key] = { contem: i.value };
+            pagina = 0; desenha();
+          });
+          cel.appendChild(i);
+        }
+        linhaFiltros.appendChild(cel);
+      }
+    }
+
+    function abrirColunas() {
+      const corpo = el('div');
+      corpo.appendChild(el('div', {
+        class: 'hint', style: { marginBottom: '8px' },
+        text: 'Desmarque as colunas que atrapalham. A tabela continua com todas por baixo — esconder não apaga.'
+      }));
+      const grade = el('div', { class: 'params-grid' });
+      const caixas = [];
+      for (const c of colunas) {
+        const lin = el('label', { class: 'tv-col-op' });
+        const chk = el('input', { type: 'checkbox' });
+        chk.checked = !ocultas.has(c.key);
+        caixas.push({ c: c, chk: chk });
+        lin.appendChild(chk);
+        lin.appendChild(el('span', { text: ' ' + c.label }));
+        grade.appendChild(lin);
+      }
+      corpo.appendChild(grade);
+      const dlg = AG.modal('Colunas da tabela', corpo, [
+        el('button', { class: 'btn', text: 'Mostrar todas', onclick: () => {
+          ocultas.clear(); dlg.close(); montaFiltros(); desenha();
+        } }),
+        el('button', { class: 'btn primary', text: 'Aplicar', onclick: () => {
+          ocultas.clear();
+          for (const x of caixas) if (!x.chk.checked) ocultas.add(x.c.key);
+          /* Esconder tudo deixaria uma tabela sem colunas, que não é uma
+             escolha — é um acidente. Mantém-se ao menos a primeira. */
+          if (ocultas.size === colunas.length) ocultas.delete(colunas[0].key);
+          dlg.close(); montaFiltros(); desenha();
+        } })
+      ]);
+    }
+
+    /* ---------- promover o recorte a filtro do agente ---------- */
+    function promover() {
+      const ativos = [];
+      for (const c of colunas) {
+        const f = filtros[c.key];
+        if (!f) continue;
+        if (f.escolhidos && f.escolhidos.size) {
+          ativos.push({ column: c.key, op: 'in', value: Array.from(f.escolhidos), label: c.label });
+        } else if (f.contem) {
+          ativos.push({ column: c.key, op: 'contains', value: f.contem, label: c.label });
+        } else {
+          if (f.min !== undefined) ativos.push({ column: c.key, op: '>=', value: f.min, label: c.label });
+          if (f.max !== undefined) ativos.push({ column: c.key, op: '<=', value: f.max, label: c.label });
+        }
+      }
+      if (!ativos.length) { AG.toast('Não há filtro de coluna para promover.'); return; }
+      if (!AG.APP || !Array.isArray(AG.APP.filters)) { AG.toast('Filtro do agente indisponível nesta tela.'); return; }
+      const descr = ativos.map((f) => f.label + ' ' + f.op + ' ' +
+        (Array.isArray(f.value) ? f.value.slice(0, 3).join(', ') + (f.value.length > 3 ? '…' : '') : f.value)).join(' · ');
+      const corpo = el('div');
+      corpo.appendChild(el('div', { class: 'hint', html:
+        'Isto deixa de ser um recorte da tabela e passa a valer para <b>toda a tela</b>: gráficos, KPIs e leituras ' +
+        'são recalculados. O que está aqui:' }));
+      corpo.appendChild(el('div', { class: 'plan-body', style: { marginTop: '8px' }, text: descr }));
+      corpo.appendChild(el('div', { class: 'hint', style: { marginTop: '8px' },
+        text: 'A busca livre não é promovida: ela procura em todas as colunas ao mesmo tempo e não vira um filtro que o agente saiba explicar.' }));
+      const dlg = AG.modal('Usar este recorte na análise?', corpo, [
+        el('button', { class: 'btn', text: 'Cancelar', onclick: () => dlg.close() }),
+        el('button', { class: 'btn primary', text: 'Aplicar à análise', onclick: () => {
+          dlg.close();
+          for (const f of ativos) {
+            /* O rótulo é o que aparece na pastilha de filtro. Sem ele a
+               pastilha cai no `coluna = valor`, que para um filtro `in` de
+               três valores diz a coisa errada. */
+            const alvo = Array.isArray(f.value)
+              ? f.value.slice(0, 3).join(', ') + (f.value.length > 3 ? ' +' + (f.value.length - 3) : '')
+              : f.value;
+            const sinal = f.op === 'in' ? ' ∈ ' : f.op === 'contains' ? ' contém ' : ' ' + f.op + ' ';
+            AG.APP.filters.push({ column: f.column, op: f.op, value: f.value, label: f.label + sinal + alvo });
+          }
+          if (AG.ui && AG.ui.renderChips) AG.ui.renderChips();
+          AG.toast(ativos.length + ' filtro(s) aplicados à análise.');
+          /* Fecha o ciclo: promover sem recalcular deixaria a tela mostrando
+             a análise antiga com a pastilha nova, que é pior que não promover. */
+          if (AG.ui && AG.ui.rerun) AG.ui.rerun();
+        } })
+      ]);
+    }
+
+    /* ---------- desenho ---------- */
+    function desenha() {
+      const filtradas = visiveis();
+      const linhas = ordenadas(filtradas);
+      const total = (td.rows || []).length;
+      const nFiltros = Object.keys(filtros).length + (busca ? 1 : 0);
+
+      contagem.textContent = nFiltros
+        ? linhas.length + ' de ' + total + ' linhas'
+        : total + (total === 1 ? ' linha' : ' linhas');
+      btnLimpar.style.display = (nFiltros || ordem) ? '' : 'none';
+      btnPromover.style.display = Object.keys(filtros).length ? '' : 'none';
+      btnCSV.style.display = nFiltros ? '' : 'none';
+
+      const paginar = !o.semPaginacao && linhas.length > PAGINA;
+      const ini = paginar ? pagina * PAGINA : 0;
+      const fim = paginar ? Math.min(linhas.length, ini + PAGINA) : linhas.length;
+
+      caixa.innerHTML = '';
+      const t = el('table', { class: 'tbl' });
+      const thead = el('thead');
+      const tr = el('tr');
+      for (const c of colunas) {
+        if (ocultas.has(c.key)) continue;
+        /* O indicador de ordem é atributo lido pelo CSS, NUNCA texto dentro
+           do <th>: uma seta no textContent quebraria toda leitura de
+           cabeçalho, inclusive a de quem copia a tabela para a planilha. */
+        const th = el('th', {
+          text: c.label, class: 'tv-th' + (c._tipo === 'numero' ? ' num' : ''),
+          'data-ord': ordem && ordem.key === c.key ? ordem.dir : '',
+          title: 'clique para ordenar por ' + c.label
+        });
+        th.addEventListener('click', () => {
+          if (!ordem || ordem.key !== c.key) ordem = { key: c.key, dir: 'asc' };
+          else if (ordem.dir === 'asc') ordem = { key: c.key, dir: 'desc' };
+          else ordem = null;                       // terceiro clique volta à ordem original
+          pagina = 0; desenha();
+        });
+        tr.appendChild(th);
+      }
+      thead.appendChild(tr);
+      t.appendChild(thead);
+
+      const tb = el('tbody');
+      for (let i = ini; i < fim; i++) {
+        const r = linhas[i];
+        tb.appendChild(el('tr', {}, colunas.filter((c) => !ocultas.has(c.key)).map((c) => {
+          const v = r[c.key];
+          const isNum = typeof v === 'number' && c._tipo !== 'data';
+          return el('td', { class: isNum ? 'num' : '', text: celulaTexto(v, c) });
+        })));
+      }
+      t.appendChild(tb);
+      caixa.appendChild(t);
+
+      if (!linhas.length) {
+        caixa.appendChild(el('div', {
+          class: 'hint', style: { padding: '14px' },
+          text: total ? 'Nenhuma linha passa por estes filtros. Use "Limpar" para voltar às ' + total + '.'
+            : 'A tabela está vazia.'
+        }));
+      }
+
+      /* Paginação com contagem à vista. O corte silencioso que existia aqui
+         é da mesma família do que escondia 41 fontes no catálogo. */
+      rodape.innerHTML = '';
+      if (paginar) {
+        const paginas = Math.ceil(linhas.length / PAGINA);
+        rodape.appendChild(el('span', { class: 'tv-contagem',
+          text: 'mostrando ' + (ini + 1) + '–' + fim + ' de ' + linhas.length }));
+        const nav = el('div', { class: 'btn-row' });
+        nav.appendChild(el('button', { class: 'btn sm ghost', text: '‹ anterior',
+          disabled: pagina === 0 ? '' : null, onclick: () => { if (pagina > 0) { pagina--; desenha(); } } }));
+        nav.appendChild(el('span', { class: 'tv-contagem', text: 'página ' + (pagina + 1) + ' de ' + paginas }));
+        nav.appendChild(el('button', { class: 'btn sm ghost', text: 'próxima ›',
+          disabled: pagina >= paginas - 1 ? '' : null,
+          onclick: () => { if (pagina < paginas - 1) { pagina++; desenha(); } } }));
+        rodape.appendChild(nav);
+      }
+    }
+
+    montaFiltros();
+    raiz.appendChild(barra);
+    raiz.appendChild(linhaFiltros);
+    raiz.appendChild(caixa);
+    raiz.appendChild(rodape);
+    desenha();
+
+    /* Exposto para teste e para quem quiser dirigir a tabela de fora. */
+    raiz._tv = {
+      buscar: (s) => { busca = s; inpBusca.value = s; pagina = 0; desenha(); },
+      filtrar: (k, f) => { if (f) filtros[k] = f; else delete filtros[k]; pagina = 0; montaFiltros(); desenha(); },
+      ordenar: (k, dir) => { ordem = k ? { key: k, dir: dir || 'asc' } : null; pagina = 0; desenha(); },
+      ocultar: (k, sim) => { if (sim) ocultas.add(k); else ocultas.delete(k); montaFiltros(); desenha(); },
+      pagina: (n) => { pagina = n; desenha(); },
+      visiveis: () => ordenadas(visiveis()),
+      colunas: () => colunas
+    };
+    return raiz;
+  }
+
+  AG.tabela = { viva, tipoDaColuna, PAGINA, MAX_CATEGORIAS };
 })();
 
 
@@ -15408,7 +15917,7 @@ const RECEITAS_ARQUIVO = [
   AG.ui = {
     dispatch, materializePlan, insightNode, kpi, deltaHtml, labelOf, describePlan, planDetails, footRow,
     buildChart, headlineFor, modal, toast, scrollDown, currentDataset,
-    renderSources, renderSuggestions, renderChips, buildSuggestions, drillDim, drillTime,
+    renderSources, renderSuggestions, renderChips, rerun: rerunLast, buildSuggestions, drillDim, drillTime,
     stream: () => AG.$('#stream .stream-inner'),
     newTurn: function (question) {
       const stream = AG.$('#stream .stream-inner');
@@ -24664,6 +25173,112 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.laminaUI = { alvoDaPergunta, atalhos, cnpjFmt, REPOSITORIOS };
+})();
+
+
+/* ==== 99-render-registros.js ==== */
+/* ============================================================
+   99 — A LISTA DE REGISTROS
+
+   A intenção `detail` ("listar", "liste", "mostrar registros", "detalhar")
+   existia no interpretador desde a V1 e NUNCA teve renderizador — quem
+   pedia "liste os dados" caía no ranking genérico e recebia uma agregação
+   no lugar das linhas. Um defeito silencioso do mesmo tipo dos outros: o
+   agente respondia outra pergunta com cara de ter respondido a certa.
+
+   Esta tela mostra a base como ela é: linha a linha, sem somar nada. É o
+   modo mais didático de conferir um número — o agregado diz quanto, a
+   lista diz de onde veio.
+
+   Todo o trabalho de ordenar, filtrar e paginar é da tabela viva (módulo
+   71), que é a mesma de todas as outras telas. Aqui só se decide O QUE
+   mostrar e o que dizer sobre isso.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts, engine = AG.engine;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+
+  /* Uma base larga cansa mais do que informa. Quando há muita coluna, as
+     primeiras que entram são as que identificam e as que medem — o resto
+     continua lá, a um clique em "Colunas". */
+  const TETO_COLUNAS = 12;
+
+  function colunasIniciais(ds) {
+    const cols = (ds.columns || []).filter((c) => !c.virtual);
+    if (cols.length <= TETO_COLUNAS) return { visiveis: cols, ocultas: [] };
+    const peso = (c) => (c.role === 'id' ? 0 : c.role === 'time' ? 1 :
+      c.role === 'dimension' ? 2 : c.role === 'measure' ? 3 : 4);
+    const ord = cols.slice().sort((a, b) => peso(a) - peso(b));
+    return { visiveis: ord.slice(0, TETO_COLUNAS), ocultas: ord.slice(TETO_COLUNAS) };
+  }
+
+  AG.renderers.registros = function (body, ds, plan, question) {
+    const linhas = engine.applyFilters(ds, plan);
+    const total = (ds.rows || []).length;
+    const esc = colunasIniciais(ds);
+
+    head(body, 'Registros de ' + (ds.name || 'base'),
+      linhas.length === total
+        ? total.toLocaleString('pt-BR') + ' linha(s) · ' + (ds.columns || []).length + ' coluna(s)'
+        : linhas.length.toLocaleString('pt-BR') + ' de ' + total.toLocaleString('pt-BR') +
+          ' linha(s) depois do recorte da pergunta');
+
+    if (!linhas.length) {
+      body.appendChild(U().insightNode(ins('warn', '⚠',
+        'O recorte da pergunta não deixou nenhuma linha. A base tem <b>' + total +
+        '</b> — tire o filtro da frase, ou abra a lista inteira e filtre na tabela, que é mais fácil de ajustar.')));
+      foot(body, question, plan, ds, 0);
+      return { headline: 'nenhuma linha no recorte' };
+    }
+
+    /* A tabela viva faz o resto: ordenar, filtrar por coluna, buscar,
+       escolher colunas, paginar e promover o recorte à análise. */
+    const td = {
+      columns: esc.visiveis.map((c) => ({ key: c.key, label: c.label, format: c.format })),
+      rows: linhas
+    };
+    const c = charts.card({
+      title: 'A base, linha a linha',
+      subtitle: 'ordene clicando no cabeçalho · filtre por coluna em ⛃ Filtros · busque em qualquer coluna',
+      tools: false, onExport: false
+    });
+    c.body.appendChild(charts.dataTable(td, { titulo: ds.name || 'registros' }));
+    body.appendChild(c.wrap);
+
+    if (esc.ocultas.length) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'A base tem <b>' + (ds.columns || []).length + ' colunas</b> e a tabela abriu com <b>' +
+        esc.visiveis.length + '</b> — as que identificam, datam e medem vêm primeiro. As outras (' +
+        esc.ocultas.slice(0, 6).map((x) => '<code>' + AG.esc(x.label) + '</code>').join(', ') +
+        (esc.ocultas.length > 6 ? ' e mais ' + (esc.ocultas.length - 6) : '') +
+        ') estão a um clique em <b>▦ Colunas</b>. Nada foi descartado.')));
+    }
+
+    body.appendChild(U().insightNode(ins('good', '✓',
+      '<b>Filtrar aqui é explorar.</b> Nada mais na tela muda enquanto você mexe — e quando o recorte ' +
+      'ficar bom, <b>↑ Usar este recorte</b> o promove a filtro do agente e aí sim gráficos, KPIs e ' +
+      'leituras recalculam. Explorar sem medo, aplicar de propósito.')));
+
+    foot(body, question, plan, ds, linhas.length);
+    return { headline: linhas.length + ' registros listados' };
+  };
+
+  /* "detalhar", "listar", "abrir", "itens" chegam pela intenção `detail`,
+     que nunca teve tela. Aponta para a mesma. */
+  AG.renderers.detail = AG.renderers.registros;
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, n) {
+    body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: (ds.rows || []).length, rowsMatched: n, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+
+  AG.registrosUI = { colunasIniciais, TETO_COLUNAS };
 })();
 
 </script>
