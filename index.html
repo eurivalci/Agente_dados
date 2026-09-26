@@ -159,7 +159,16 @@ button { cursor: pointer; }
 .btn.primary:hover { background: #2a78d6; }
 .btn.ghost { background: transparent; }
 .btn.sm { padding: 4px 9px; font-size: 11.5px; }
-.btn[disabled] { opacity: .45; pointer-events: none; }
+/* Botão inativo tem de PARECER inativo. Um primário azul a 45% de opacidade,
+   sobre o fundo escuro da janela, continua lendo como botão ativo — e clicar
+   num botão que não responde é indistinguível de recurso quebrado. O
+   `pointer-events:none` saía pela mesma porta: matava o cursor e o `title`,
+   tirando a última pista que restava. O atributo `disabled` de <button> já
+   impede o clique sozinho. */
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn[disabled]:hover { background: var(--surface-3); border-color: var(--border); }
+.btn.primary[disabled],
+.btn.primary[disabled]:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-muted); }
 .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ---------- topbar ---------- */
@@ -14506,10 +14515,18 @@ const RECEITAS_ARQUIVO = [
       if (keep) sel.value = keep;
     }
     fillCols(lCol, lDs.value); fillCols(rCol, rDs.value);
-    lDs.addEventListener('change', () => { fillCols(lCol, lDs.value); clearDiag(); });
-    rDs.addEventListener('change', () => { fillCols(rCol, rDs.value); clearDiag(); });
-    lCol.addEventListener('change', clearDiag);
-    rCol.addEventListener('change', clearDiag);
+    /* Toda mudança REANALISA. Antes, toda mudança apagava o diagnóstico e
+       desabilitava o botão de criar, e só o botão "Analisar cruzamento" o
+       reacendia — quem escolhesse os campos e fosse direto ao botão azul
+       encontrava um botão morto, sem nada na tela dizendo o que faltava.
+       Medido: o diagnóstico de 200 mil × 200 mil linhas leva ~260 ms, que é o
+       teto documentado do cruzamento. Não há economia que justifique cobrar
+       um clique preliminar. */
+    lDs.addEventListener('change', () => { fillCols(lCol, lDs.value); analyze(); });
+    rDs.addEventListener('change', () => { fillCols(rCol, rDs.value); analyze(); });
+    lCol.addEventListener('change', analyze);
+    rCol.addEventListener('change', analyze);
+    tSel.addEventListener('change', analyze);
 
     function fld(label, node) { return el('label', { class: 'fld' }, [el('span', { text: label }), node]); }
     grid.appendChild(fld('Base principal', lDs));
@@ -14522,19 +14539,40 @@ const RECEITAS_ARQUIVO = [
     const diagBox = el('div', { style: { marginTop: '6px' } });
     body.appendChild(diagBox);
     let lastDiag = null, lastPair = null;
-    function clearDiag() { diagBox.innerHTML = ''; lastDiag = null; createBtn.disabled = true; }
+
+    /* Botão travado sem motivo à vista é o mesmo que botão quebrado. Quando
+       não dá para criar, o porquê fica ao lado do próprio botão. */
+    function trava(motivo) {
+      lastDiag = null; lastPair = null;
+      createBtn.disabled = true;
+      createBtn.title = motivo || '';
+      porQue.textContent = motivo || '';
+      porQue.hidden = !motivo;
+    }
+    function libera() {
+      createBtn.disabled = false;
+      createBtn.title = '';
+      porQue.hidden = true;
+    }
 
     function apply(r) {
       lDs.value = r.leftDs; fillCols(lCol, r.leftDs, r.leftCol);
       rDs.value = r.rightDs; fillCols(rCol, r.rightDs, r.rightCol);
-      clearDiag(); analyze();
+      analyze();
     }
 
     function analyze() {
       const L = APP.datasets.find((d) => d.id === lDs.value);
       const R = APP.datasets.find((d) => d.id === rDs.value);
-      if (!L || !R || L.id === R.id) { toast('Escolha duas bases diferentes.'); return; }
       diagBox.innerHTML = '';
+      if (!L || !R) { trava('Escolha as duas bases.'); return; }
+      if (L.id === R.id) {
+        diagBox.appendChild(insightNode(AG.insights.ins('warn', '⚠',
+          'A base principal e a de referência são a mesma. Escolha duas bases diferentes para cruzar.')));
+        trava('Principal e referência são a mesma base.');
+        return;
+      }
+      if (!lCol.value || !rCol.value) { trava('Escolha o campo dos dois lados.'); return; }
       const d = AG.join.diagnose(L, R, lCol.value, rCol.value);
       lastDiag = d; lastPair = { L, R };
       const proj = tSel.value === 'inner' ? d.projectedMatched : d.projectedRows;
@@ -14552,19 +14590,28 @@ const RECEITAS_ARQUIVO = [
           'cada linha correspondente vira ' + d.fanOut.toFixed(2).replace('.', ',') + ' linhas (máximo ' + d.maxFan + '). ' +
           '<b>Somas de colunas da base principal ficarão infladas.</b> ' +
           'Use uma base de referência com uma linha por chave, ou some apenas colunas da base principal com cautela.')));
-      } else {
+      } else if (d.matched) {
+        /* Só faz sentido garantir que as somas estão preservadas quando
+           alguma linha casou. Com zero correspondência, "somas preservadas"
+           é um ✓ verde em cima de um cruzamento que não existe. */
         diagBox.appendChild(insightNode(AG.insights.ins('good', '✓', 'Uma linha da referência por chave — somas preservadas.')));
       }
+      /* Vale também com zero correspondência: é exatamente aí que os exemplos
+         de valor sem par dizem POR QUE não casou (formato, zero à esquerda,
+         acento) — a informação mais útil da janela inteira. */
       if (d.matchRate < 0.75) {
         diagBox.appendChild(insightNode(AG.insights.ins('warn', '⚠',
           'Correspondência baixa. Verifique se os dois campos são realmente a mesma chave' +
           (d.orphanSample.length ? ' — sem par, por exemplo: ' + d.orphanSample.slice(0, 5).map((v) => '<b>' + AG.esc(v) + '</b>').join(', ') : '') + '.')));
       }
-      createBtn.disabled = d.matched === 0;
-      if (!d.matched) diagBox.appendChild(insightNode(AG.insights.ins('crit', '✕', 'Nenhuma linha casou. Esse par de campos não serve como chave.')));
+      if (d.matched) { libera(); } else {
+        diagBox.appendChild(insightNode(AG.insights.ins('crit', '✕',
+          'Nenhuma linha casou. Esse par de campos não serve como chave.')));
+        trava('Nenhuma linha casou com esse par de campos.');
+      }
     }
 
-    const analyzeBtn = el('button', { class: 'btn', text: 'Analisar cruzamento', onclick: analyze });
+    const porQue = el('div', { class: 'card-sub', hidden: true, style: { alignSelf: 'center', marginRight: 'auto' } });
     const createBtn = el('button', {
       class: 'btn primary', text: 'Criar base cruzada', disabled: true,
       onclick: () => {
@@ -14579,8 +14626,14 @@ const RECEITAS_ARQUIVO = [
         announceJoin(ds);
       }
     });
-    const dlg = modal('Cruzar bases', body, [analyzeBtn, createBtn]);
+    const dlg = modal('Cruzar bases', body, [porQue, createBtn]);
+    /* A janela nasce respondendo, não esperando um clique. E nasce no melhor
+       par que o detector achou — abrir no primeiro campo de cada lista
+       mostrava "0,0% de correspondência" para duas bases que casam 100% por
+       outra coluna, o que faz o recurso parecer quebrado logo na abertura. */
     if (prefill) apply(prefill);
+    else if (rels.length) apply(rels[0]);
+    else analyze();
     return dlg;
   }
 
