@@ -5928,6 +5928,240 @@ const RECEITAS_ARQUIVO = [
     return out;
   }
 
+  /* =========================================================
+     COMPARAÇÃO EXPLÍCITA: coluna OPERADOR valor
+     =========================================================
+     `UF SIGLA = "CE"` é a forma mais direta de pedir um recorte, e era a que
+     o agente lia pior: a normalização apaga `=` e as aspas ANTES de qualquer
+     leitura, então sobrava "uf sigla ce" — "uf sigla" casava como dimensão,
+     "CE" se perdia, e a resposta vinha "média de Região Imediata Id por UF
+     Sigla". Interpretação errada com 52% de confiança, que é o pior caso:
+     alta o bastante para responder, baixa o bastante para ninguém conferir.
+
+     A regra que torna isto seguro é uma só: a comparação só vale quando o
+     texto ANTES do operador resolve para uma coluna real da base. Sem isso,
+     nada muda — "acima de 100 mil" continua no caminho antigo, que prende o
+     corte à medida. */
+
+  /* Operadores em símbolo e por extenso. A ordem importa: `>=` antes de `>`. */
+  const OP_SIMB = [
+    ['>=', '>='], ['<=', '<='], ['<>', '!='], ['!=', '!='], ['==', '='],
+    ['=', '='], ['>', '>'], ['<', '<']
+  ];
+  const OP_TEXTO = [
+    [/\b(?:nao|não)\s+(?:e|é|eh|seja|igual\s+a)\b/i, '!='],
+    [/\bdiferente\s+de\b/i, '!='],
+    [/\bmaior\s+ou\s+igual\s+a\b/i, '>='],
+    [/\bmenor\s+ou\s+igual\s+a\b/i, '<='],
+    [/\bigual\s+a\b/i, '='],
+    [/\bcont[eé]m\b/i, 'contains'],
+    [/\bin\b/i, 'in'],
+    [/\bem\s*(?=\()/i, 'in']
+  ];
+
+  /**
+   * Acha as comparações escritas na pergunta.
+   *
+   * Recebe as tabelas porque a única regra que torna isto seguro é resolver o
+   * NOME DA COLUNA antes de aceitar a comparação: sem coluna reconhecida, a
+   * ocorrência é devolvida ao caminho antigo e nada muda ("acima de 100 mil"
+   * continua prendendo o corte à medida). Resolver aqui também dá o começo
+   * exato do trecho a remover da frase — remover desde o separador anterior
+   * apagava a medida junto ("média de população onde uf sigla = CE" perdia
+   * "média de população" inteira).
+   */
+  function achaComparacoes(question, tables) {
+    const s = String(question || '');
+    const nomes = new Set();
+    for (const t of (tables || [])) {
+      for (const c of (t.columns || [])) {
+        if (c.virtual) continue;
+        nomes.add(AG.norm(c.label));
+        nomes.add(AG.norm(c.key));
+      }
+    }
+    if (!nomes.size) return [];
+
+    const achados = [];
+    for (const [re, op] of OP_TEXTO) {
+      const r = new RegExp(re.source, 'gi');
+      let m;
+      while ((m = r.exec(s)) !== null) achados.push({ iOp: m.index, fimOp: m.index + m[0].length, op });
+    }
+    const rSimb = /(>=|<=|<>|!=|==|=|>|<)/g;
+    let m;
+    while ((m = rSimb.exec(s)) !== null) {
+      if (achados.some((a) => m.index >= a.iOp && m.index < a.fimOp)) continue;
+      achados.push({ iOp: m.index, fimOp: m.index + m[1].length,
+        op: OP_SIMB.reduce((r2, [t, o]) => (t === m[1] ? o : r2), '=') });
+    }
+    achados.sort((a, b) => a.iOp - b.iOp);
+
+    const sep = /[,;|]|\s+\be\b\s+/gi;
+    const out = [];
+    for (let k = 0; k < achados.length; k++) {
+      const a = achados[k];
+      const anteriorFim = k > 0 ? achados[k - 1].fimOp : 0;
+
+      /* A coluna é o SUFIXO mais longo do texto anterior que é nome de coluna
+         de alguma base carregada. Mais longo primeiro: em "regiao imediata
+         id", "id" também é sufixo, e o nome inteiro é o certo. */
+      const trechoAntes = s.slice(anteriorFim, a.iOp);
+      const palavras = [];
+      const rTok = /\S+/g;
+      let t;
+      while ((t = rTok.exec(trechoAntes)) !== null) palavras.push({ txt: t[0], i: t.index });
+      let iniCol = -1;
+      for (let p = Math.max(0, palavras.length - 6); p < palavras.length; p++) {
+        const cand = AG.norm(palavras.slice(p).map((x) => x.txt).join(' '));
+        if (nomes.has(cand)) { iniCol = anteriorFim + palavras[p].i; break; }
+      }
+      if (iniCol < 0) continue;            // não é comparação de coluna
+      const col = s.slice(iniCol, a.iOp);
+
+      /* Valor: lista entre parênteses inteira, ou texto até o separador. */
+      const proximoIni = k + 1 < achados.length ? achados[k + 1].iOp : s.length;
+      const depois = s.slice(a.fimOp, proximoIni);
+      let corte;
+      const lista = /^\s*\([^)]*\)/.exec(depois);
+      if (lista) {
+        corte = lista[0].length;
+      } else {
+        const aspas = /^\s*(["'])(?:(?!\1)[\s\S])*\1/.exec(depois);
+        if (aspas) corte = aspas[0].length;
+        else {
+          sep.lastIndex = 0;
+          const primeiro = sep.exec(depois);
+          corte = primeiro ? primeiro.index : depois.length;
+        }
+      }
+      out.push({ colTexto: col, valTexto: depois.slice(0, corte), op: a.op,
+        ini: iniCol, fim: a.fimOp + corte });
+    }
+    return out;
+  }
+
+  /** Tira as aspas e o parêntese de lista, devolvendo os valores escritos. */
+  function valoresDe(texto) {
+    const t = String(texto || '').trim();
+    const lista = /^\(([^)]*)\)$/.exec(t);
+    if (lista) return lista[1].split(/[,;]/).map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    const asp = /^["']([\s\S]*)["']$/.exec(t);
+    if (asp) return [asp[1]];
+    return t ? [t.replace(/["']/g, '').trim()] : [];
+  }
+
+  /**
+   * Resolve as comparações contra UMA base. Só sobrevive a comparação cuja
+   * coluna existe — e, em coluna de texto, cujo valor existe de fato na
+   * coluna. Filtro que não casa com nada devolveria zero linhas com cara de
+   * "não há dados", quando o certo é dizer que o valor não está ali.
+   */
+  function resolveComparacoes(comps, ds) {
+    const filtros = [], problemas = [];
+    if (!ds) return { filtros, problemas };
+    const porNome = new Map();
+    for (const c of ds.columns) {
+      if (c.virtual) continue;
+      porNome.set(AG.norm(c.label), c);
+      porNome.set(AG.norm(c.key), c);
+    }
+    const achaCol = (texto) => {
+      const toks = AG.norm(texto).split(' ').filter(Boolean);
+      /* sufixo mais longo primeiro: em "média de uf sigla", a coluna é
+         "uf sigla", não "média de uf sigla". */
+      for (let i = 0; i < toks.length; i++) {
+        const cand = toks.slice(i).join(' ');
+        if (porNome.has(cand)) return porNome.get(cand);
+      }
+      return null;
+    };
+    for (const cp of comps) {
+      const col = achaCol(cp.colTexto);
+      if (!col) continue;                      // não é comparação de coluna: caminho antigo
+      const escritos = valoresDe(cp.valTexto);
+      if (!escritos.length) continue;
+
+      if (col.role === 'measure' || col.role === 'time') {
+        const n = col.role === 'time' ? AG.parseDate(escritos[0]) : AG.parseNumber(escritos[0]);
+        if (n === null || n === undefined || !isFinite(n)) {
+          problemas.push({ col: col, escrito: escritos[0], tipo: 'numero' });
+          continue;
+        }
+        filtros.push({
+          column: col.key, op: cp.op === 'contains' ? '=' : cp.op, value: n,
+          label: col.label + ' ' + simbolo(cp.op) + ' ' + escritos[0], explicita: true
+        });
+        continue;
+      }
+
+      /* "contém" é busca parcial por definição: exigir que o trecho exista
+         como valor inteiro da coluna anularia o operador. Vem antes da
+         resolução exata. */
+      if (cp.op === 'contains') {
+        filtros.push({ column: col.key, op: 'contains', value: escritos[0],
+          label: col.label + ' contém ' + escritos[0], explicita: true });
+        continue;
+      }
+
+      /* Texto: o motor compara string com string EXATA, então o valor escrito
+         precisa virar o valor que está na coluna. "ce" tem de encontrar "CE". */
+      const reais = [];
+      for (const esc of escritos) {
+        const achado = valorReal(ds, col, esc);
+        if (achado === null) problemas.push({ col: col, escrito: esc, tipo: 'valor' });
+        else reais.push(achado);
+      }
+      if (!reais.length) continue;
+      if (cp.op === 'in' || reais.length > 1) {
+        filtros.push({ column: col.key, op: 'in', value: reais,
+          label: col.label + ' ∈ ' + reais.join(', '), explicita: true });
+      } else {
+        filtros.push({ column: col.key, op: cp.op === '>' || cp.op === '<' || cp.op === '>=' || cp.op === '<=' ? '=' : cp.op,
+          value: reais[0], label: col.label + ' ' + simbolo(cp.op) + ' ' + reais[0], explicita: true });
+      }
+    }
+    return { filtros, problemas };
+  }
+  const simbolo = (op) => (op === '!=' ? '≠' : op === 'contains' ? 'contém' : op);
+
+  /** Alguns valores que a coluna realmente tem, para a recusa ser acionável. */
+  function amostraDeValores(ds, col, teto) {
+    const vistos = [];
+    const set = new Set();
+    for (const r of ds.rows) {
+      const v = r[col.key];
+      if (v === null || v === undefined || v === '') continue;
+      const s = String(v);
+      if (set.has(s)) continue;
+      set.add(s); vistos.push(s);
+      if (vistos.length >= (teto || 8)) break;
+    }
+    const total = col.stats && col.stats.unique;
+    if (total && total > vistos.length) vistos.push('… e outros ' + (total - vistos.length));
+    return vistos;
+  }
+
+  /** O valor como está gravado na coluna, achado sem acento e sem caixa. */
+  function valorReal(ds, col, escrito) {
+    const alvo = AG.norm(escrito);
+    if (!alvo) return null;
+    const vistos = new Set();
+    let parcial = null;
+    for (const r of ds.rows) {
+      const v = r[col.key];
+      if (v === null || v === undefined) continue;
+      const s = String(v);
+      if (vistos.has(s)) continue;
+      vistos.add(s);
+      const n = AG.norm(s);
+      if (n === alvo) return v;
+      if (parcial === null && n.indexOf(alvo) === 0) parcial = v;
+      if (vistos.size > 20000) break;
+    }
+    return parcial;
+  }
+
   /* palavras que invertem o filtro de valor que vem logo depois */
   const NEGACAO_RE = /(excluindo|excluir|exceto|menos|fora|sem|tirando|desconsiderando|que nao (seja|sejam|é|e)|diferente de|nao)/;
 
@@ -6041,11 +6275,22 @@ const RECEITAS_ARQUIVO = [
    */
   function parseQuestion(question, datasets, ctx) {
     ctx = ctx || {};
+    /* A comparação explícita sai da frase ANTES do casamento de n-gramas.
+       Se ficasse, "UF SIGLA" viraria a dimensão do agrupamento além de ser a
+       coluna filtrada — o agente responderia "por UF Sigla" um recorte que
+       tem uma UF só. O texto removido é só o da comparação; o resto da frase
+       ("média de população", "top 10") continua intacto. */
+    const comparacoes = achaComparacoes(question, datasets.filter((d) => d.kind === 'table'));
+    let semComparacao = String(question || '');
+    for (let i = comparacoes.length - 1; i >= 0; i--) {
+      const c = comparacoes[i];
+      semComparacao = semComparacao.slice(0, c.ini) + ' ' + semComparacao.slice(c.fim);
+    }
     /* A vírgula separa itens de uma lista tanto quanto o "e". A normalização
        a apagava, e "por órgão, modalidade e situação" virava o n-grama
        "orgao modalidade" — que casava com UMA coluna e engolia a outra.
        Trocando por " e ", o n-grama não pode mais atravessar a separação. */
-    const q = ' ' + AG.norm(String(question || '').replace(/[,;]+/g, ' e ')) + ' ';
+    const q = ' ' + AG.norm(semComparacao.replace(/[,;]+/g, ' e ')) + ' ';
     const tokens = q.trim().split(' ').filter(Boolean);
     const notes = [], ambiguities = [];
 
@@ -6157,6 +6402,19 @@ const RECEITAS_ARQUIVO = [
     }
     if (!ds && tables.length) ds = tables.slice().sort((a, b) => b.rowCount - a.rowCount)[0];
 
+    /* A comparação também escolhe a base: quem escreve `UF SIGLA = "CE"` está
+       falando da base que TEM essa coluna. Só troca quando a escolhida não
+       resolve nenhuma comparação e outra resolve — nunca contra uma base que
+       o usuário fixou. */
+    let comp = resolveComparacoes(comparacoes, ds);
+    if (comparacoes.length && !comp.filtros.length && !ctx.activeDsId) {
+      for (const t of tables) {
+        if (t === ds) continue;
+        const alt = resolveComparacoes(comparacoes, t);
+        if (alt.filtros.length) { ds = t; comp = alt; break; }
+      }
+    }
+
     /* busca documental quando não há tabela relevante */
     if (!ds && docs.length) {
       return { intent: 'doc_search', question, docs: docs.map((d) => d.id), confidence: 0.6, notes: notes, ambiguities: [] };
@@ -6173,6 +6431,15 @@ const RECEITAS_ARQUIVO = [
     const dimCols = [];
     const medidasCasadas = [];   // toda coluna numérica nomeada, na ordem em que apareceu
     const filters = [];
+    /* Comparação escrita vem primeiro e vale sobre o resto: foi digitada, não
+       inferida. Valor que não existe na coluna vira AVISO, não filtro vazio —
+       zero linhas com cara de "não há dados" é a pior resposta possível. */
+    for (const f of comp.filtros) filters.push(f);
+    for (const pr of comp.problemas) {
+      notes.push(pr.tipo === 'numero'
+        ? 'Em ' + pr.col.label + ', "' + pr.escrito + '" não é um número — a comparação foi ignorada.'
+        : 'Não existe "' + pr.escrito + '" na coluna ' + pr.col.label + ' — a comparação foi ignorada para não devolver uma lista vazia.');
+    }
     for (const mt of matches) {
       if (mt.soft) continue;   // casou só com o nome da fonte: já cumpriu seu papel
       const cand = mt.cands.find((c) => inDs(c.binding) && c.binding.kind !== 'dataset')
@@ -6280,7 +6547,14 @@ const RECEITAS_ARQUIVO = [
 
     /* defaults inteligentes */
     if (!intent) {
-      if (derivedDims.length && (dimCols.length || chart)) intent = 'crosstab';
+      /* Frase que é SÓ uma comparação — `UF SIGLA = "CE"` — não pede número
+         nenhum: pede o recorte. A resposta honesta são as linhas daquele
+         recorte, na tabela viva, com filtro em cada coluna. Inventar uma
+         medida aqui é o que produzia "média de Região Imediata Id por UF
+         Sigla": soma de um identificador, que não significa nada. */
+      if (comp.filtros.length && !measureCol && !dimCols.length && !derivedDims.length &&
+          !timeRange && agg !== 'count') { intent = 'detail'; intentExplicit = true; }
+      else if (derivedDims.length && (dimCols.length || chart)) intent = 'crosstab';
       else if (derivedDims.length) intent = 'ranking';
       else if (dimCols.length >= 2) intent = 'crosstab';
       else if (dimCols.length && measureCol) intent = 'ranking';
@@ -6469,7 +6743,18 @@ const RECEITAS_ARQUIVO = [
     const temDim = (dimensions.length + derivedDims.length) > 0;
     let runnable = true;
     let notRunnable = null;
-    if (NEEDS_DIM[intent] && !temDim) {
+    /* Comparação escrita que não casou com nada é o caso mais perigoso: a
+       frase é inequívoca (`UF SIGLA = "XX"`), e responder um panorama da base
+       inteira é entregar 1.523 linhas a quem pediu as de XX. Recusar dizendo
+       QUAIS valores existem devolve o controle a quem perguntou. */
+    if (comp.problemas.length && !comp.filtros.length) {
+      const pr = comp.problemas[0];
+      runnable = false;
+      notRunnable = pr.tipo === 'numero'
+        ? '"' + pr.escrito + '" não é um número, e ' + pr.col.label + ' é uma coluna numérica.'
+        : 'Não existe "' + pr.escrito + '" em ' + pr.col.label + '. Valores dessa coluna: ' +
+          amostraDeValores(ds, pr.col).join(', ') + '.';
+    } else if (NEEDS_DIM[intent] && !temDim) {
       runnable = false; notRunnable = 'Esta análise precisa de uma coluna para agrupar, e não encontrei nenhuma utilizável nesta fonte.';
     } else if (NEEDS_TIME[intent] && !timeColumn) {
       runnable = false; notRunnable = 'Esta análise precisa de uma coluna de data, e a fonte não tem nenhuma.';
@@ -6579,7 +6864,25 @@ const RECEITAS_ARQUIVO = [
     return !!(r && r !== 'documents');
   }
 
-  AG.nlu = { parseQuestion, regraExplicita, mandaNoIdentificador, parseTime, parseNumericFilters, parseBands, parseDatePart, parseChart,
+  /**
+   * A frase compara uma COLUNA DE BASE CARREGADA com um valor?
+   *
+   * Sexta aparição do mesmo princípio de precedência: o que está carregado
+   * vence o que está na rede. "média de população onde uf sigla = CE" traz um
+   * parâmetro que o catálogo reconhece ("CE"), e por isso virava oferta de
+   * consulta ao SICONFI — respondendo outra pergunta, sobre outra base. Quem
+   * escreve o nome de uma coluna da própria base está falando dela.
+   */
+  function comparaColunaLocal(question, datasets) {
+    const tabelas = (datasets || []).filter((d) => d && d.kind === 'table');
+    if (!tabelas.length) return false;
+    const comps = achaComparacoes(question, tabelas);
+    if (!comps.length) return false;
+    return tabelas.some((t) => resolveComparacoes(comps, t).filtros.length > 0);
+  }
+
+  AG.nlu = { parseQuestion, regraExplicita, mandaNoIdentificador, comparaColunaLocal,
+    achaComparacoes, resolveComparacoes, parseTime, parseNumericFilters, parseBands, parseDatePart, parseChart,
     pickDefaultMeasure, pickDefaultDimension, INTENT_RULES, CHART_RULES };
 })();
 
@@ -14964,7 +15267,12 @@ const RECEITAS_ARQUIVO = [
        CONTÉM, e o que está carregado vale mais que o que está na rede. Sem
        elas, "lâmina do CNPJ X" com o arquivo da CVM aberto virava oferta de
        consulta à Receita — que responde outra pergunta. */
-    const mandaOutraIntencao = AG.nlu && AG.nlu.mandaNoIdentificador && AG.nlu.mandaNoIdentificador(question);
+    /* Duas formas de a frase dizer "estou falando da base que está aqui": uma
+       regra de intenção explícita, e uma comparação escrita sobre coluna de
+       base carregada. Qualquer uma delas fecha os portões de rede abaixo. */
+    const mandaOutraIntencao =
+      !!(AG.nlu && AG.nlu.mandaNoIdentificador && AG.nlu.mandaNoIdentificador(question)) ||
+      !!(AG.nlu && AG.nlu.comparaColunaLocal && AG.nlu.comparaColunaLocal(question, APP.datasets));
     if (AG.consulta && AG.consultaUI && !mandaOutraIntencao) {
       const ids = AG.consulta.detectar(question)
         .filter((d) => !d.valido || d.semFonte || AG.consulta.fontesPara(d.tipo).length)
