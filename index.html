@@ -3307,6 +3307,36 @@ const FONTES = [
 
 /* ---------------- FISCAL E CONTÁBIL ---------------- */
 {
+  /* A CAPAG NÃO TEM API, e isso precisa estar escrito onde alguém vai
+     procurar. Circula em script de exemplo um endpoint
+     `/v1/siconfi/capag` que responde 404 — a segunda rota abaixo existe
+     exatamente para registrar a tentativa e o resultado, para ninguém
+     gastar a tarde de novo. O caminho que funciona é a planilha. */
+  id:"capag-municipios", nome:"CAPAG — Capacidade de pagamento dos municípios",
+  org:"Tesouro Nacional — STN", dom:"fiscal", acesso:"file",
+  gran:"municipio", core:true, peso:95,
+  desc:"A nota A, B, C ou D de cada município brasileiro, com as três notas que a compõem: endividamento, poupança corrente e liquidez. É ela que decide se o ente pode contratar operação de crédito com garantia da União. Uma planilha por data de posição, cobrindo o país inteiro — carregue aqui e pergunte \"CAPAG de Fortaleza\".",
+  base:"https://www.tesourotransparente.gov.br/ckan/dataset/capag-municipios",
+  params:[], formato:"XLSX, uma planilha por data de posição (~23 MB)",
+  periodicidade:"Reprocessada algumas vezes por ano; cada posição é um arquivo novo",
+  cobertura:"Brasil — todos os municípios, séries desde 2018",
+  auditoria:"NÃO auditada quanto a CORS, e não precisa ser: é arquivo de portal, não endpoint. VERIFICADO em 26/09/2026 que a API que circula em script de exemplo NÃO EXISTE — `https://apidatalake.tesouro.gov.br/v1/siconfi/capag?an_exercicio=2025&id_tv=M` responde 404, e a variante `/ords/siconfi/tt/capag` também. Não é CORS nem chave: o recurso não é servido. DUAS ARMADILHAS na planilha. (1) Cada arquivo é de UMA posição e a data está no NOME (`capag-municipios-posicao-2026-set.xlsx`), não numa coluna — o agente lê a data do nome, então não renomeie o arquivo. (2) A metodologia mudou duas vezes em dois anos (Portarias MF 1.583/2023 e 1.764/2024, e STN/MF 857/2026): duas posições de regimes diferentes não estão na mesma régua, e uma nota que piora pode ser o critério que apertou. O agente avisa quando isso acontece; não recalcula a nota, que é da STN.",
+  doc:"https://www.tesourotransparente.gov.br/temas/estados-e-municipios/capacidade-de-pagamento-capag",
+  chave:["capag","capacidade de pagamento","nota","rating","endividamento","poupanca corrente","liquidez","garantia da uniao","operacao de credito","municipio","stn","tesouro"],
+  rotas:[
+    R({ id:"planilha", nome:"Planilha da posição (o caminho que funciona)", quando:"sempre", devolve:"lista",
+        base:"https://www.tesourotransparente.gov.br/ckan/dataset/capag-municipios",
+        params:[],
+        nota:"Baixe o XLSX da posição mais recente e arraste para o agente. Uma planilha traz todos os municípios. Carregue DUAS posições e o agente monta a trajetória da nota, avisando se forem de metodologias diferentes.",
+        produz:["Código IBGE","Ente","UF","Nota CAPAG","Endividamento","Poupança corrente","Liquidez"] }),
+    R({ id:"api-404", nome:"A API que não existe (registrado para não se tentar de novo)", quando:"nunca — está aqui como registro", devolve:"registro",
+        base:"https://apidatalake.tesouro.gov.br/v1/siconfi/capag?an_exercicio=2025&id_tv=M",
+        params:[P("an_exercicio","2025",false,"AAAA"),P("id_tv","M",false,"M = municípios, E = estados")],
+        nota:"Testado em 26/09/2026: HTTP 404. A variante `/ords/siconfi/tt/capag` também dá 404. Os endpoints do SICONFI que EXISTEM são entes, dca, rreo, rgf, extrato_entregas e as três matrizes de saldos — CAPAG não está entre eles. Se um dia passar a existir, este é o lugar de descobrir.",
+        produz:[] })
+  ]
+},
+{
   id:"siconfi-entes", nome:"SICONFI — Entes da Federação", org:"Tesouro Nacional", dom:"fiscal", acesso:"live",
   gran:"municipio", core:true, peso:99,
   desc:"A tabela mais subestimada do acervo federal: todos os entes (União, 27 UFs e 5.570 municípios) com código IBGE, UF, região, esfera, CNPJ e população do exercício. Resolve num único GET o que normalmente exige cruzar três fontes.",
@@ -5704,7 +5734,11 @@ const RECEITAS_ARQUIVO = [
        existe na base, porque é construído a partir dos próprios pares. */
     { intent: 'finsetorial', re: /(meta setorial|benchmark setorial|alfa setorial|contra (os |seus )?pares|versus (os )?pares|peer group|grupo de pares|(mediana|media) d[oa] (setor|grupo|classe|categoria|pares)|(contra|versus|acima d[ao]|em relacao a[o]?) (a )?(mediana|media) d[oa] (setor|grupo|classe|categoria)|compara[rc].{0,20}(com|contra|ao) (o )?(setor|grupo|mesma classe|mesma categoria)|dentro d[ao] (mesma )?(classe|categoria|segmento)|fundos? d[oa] mesm[ao] (classe|categoria|segmento)|bate[mu]? (os |seus )?pares|acima dos pares)/ },
     { intent: 'fincompara', re: /(comparar (os )?fundos|comparacao de fundos|comparador de fundos|ranking de fundos|melhores fundos|qual fundo (rende|rendeu|e melhor|foi melhor)|fundos? (que )?(bate[mu]?|superou|superam) o (cdi|benchmark|indice)|desempenho dos fundos|fundos lado a lado|compara[rc].{0,18}(fundos|cotas|gestores))/ },
-    { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada|capacidade de pagamento|\bcapag\b)/ },
+    /* A CAPAG é nota publicada, não cálculo de limite: sai do finlrf e ganha
+       regra própria ANTES dele. Quem pergunta "capacidade de pagamento de
+       Fortaleza" quer a nota do Tesouro, não o painel de limites da LRF. */
+    { intent: 'capag', re: /(\bcapag\b|capacidade de pagamento|nota do (municipio|ente|estado)|nota fiscal do (municipio|ente)|classificacao do (municipio|ente)|rating (do|de) (municipio|ente|estado))/ },
+    { intent: 'finlrf', re: /(\blrf\b|lei de responsabilidade fiscal|limite (prudencial|de alerta|de pessoal|de endividamento|legal)|gastos? com pessoal|despesa de pessoal|percentual da rcl|comprometimento da rcl|60% da rcl|divida consolidada)/ },
     { intent: 'finreal', re: /(deflacion|valores? reais|em termos reais|descontada a inflacao|corrigid[oa] pel[oa] (ipca|igp|inpc|inflacao)|a precos de|poder de compra|real vs nominal|nominal vs real|inflacao acumulada|serie real)/ },
     { intent: 'finbeta', re: /(\bbeta\b|correlacao com o (indice|ibovespa|benchmark|mercado)|acompanha o (indice|ibovespa|mercado)|em relacao ao (indice|benchmark|ibovespa)|contra o (indice|benchmark|ibovespa|cdi)|versus o (indice|benchmark|ibovespa))/ },
     { intent: 'finindic', re: /(margem (bruta|liquida|operacional|ebitda)|liquidez (corrente|seca|imediata)|indicadores? (contabeis|financeiros|fundamentalistas)|\broe\b|\broa\b|alavancagem|divida liquida|ebitda|fundamentos da empresa|analise fundamentalista)/ },
@@ -5752,7 +5786,7 @@ const RECEITAS_ARQUIVO = [
     /* a camada financeira trabalha sobre a série inteira: pedir uma dimensão
        para "qual a volatilidade disso" seria inventar exigência */
     finrisco: 1, finreal: 1, finbeta: 1, finlrf: 1, finindic: 1,
-    fincompara: 1, fincarteira: 1, finsetorial: 1, finlamina: 1, contabil: 1,
+    fincompara: 1, fincarteira: 1, finsetorial: 1, finlamina: 1, capag: 1, contabil: 1,
     /* a consulta por identificador não sai da base carregada: não há dimensão
        nem medida a exigir, e exigir uma seria inventar requisito */
     consulta: 1 };
@@ -13487,6 +13521,279 @@ const RECEITAS_ARQUIVO = [
 })();
 
 
+/* ==== 78-capag.js ==== */
+/* ============================================================
+   78 — CAPAG: A NOTA DE CAPACIDADE DE PAGAMENTO DO ENTE
+
+   Duas coisas precisam ser ditas antes do código.
+
+   A PRIMEIRA é que a CAPAG não tem API. O endpoint que circula em script
+   de exemplo — `apidatalake.tesouro.gov.br/v1/siconfi/capag` — responde
+   404, assim como a variante em `/ords/siconfi/tt/capag`; foi conferido em
+   26/09/2026. O que existe é a PLANILHA publicada no CKAN do Tesouro, uma
+   por data de posição, cobrindo todos os municípios de uma vez. Carregada
+   aqui, "CAPAG de Fortaleza" vira busca local — resolvida pelos 5.570
+   municípios já embutidos, pelo código do IBGE.
+
+   A SEGUNDA, e mais importante, é que este módulo NÃO RECALCULA a nota.
+   A CAPAG é classificação regulada — Portarias MF 1.583/2023 e 1.764/2024,
+   e STN/MF 857/2026 — e a metodologia mudou duas vezes em dois anos. A
+   planilha já traz a nota e os três indicadores calculados pela própria
+   STN. Reimplementar as faixas aqui seria inventar uma autoridade que este
+   arquivo não tem, e errar junto com quem errasse a leitura da portaria.
+   O trabalho do agente é ler, cruzar, mostrar a evolução e EXPLICAR — e
+   avisar quando duas posições vierem de metodologias diferentes.
+
+   Como em toda camada recente, nenhum nome de coluna está codificado: o
+   módulo reconhece CONCEITOS sobre os rótulos da base carregada. É o que
+   permite funcionar sem que ninguém aqui tenha visto o arquivo.
+   ============================================================ */
+
+(function () {
+  const norm = AG.norm;
+
+  /* Conceito → como ele costuma aparecer escrito na planilha da STN e nas
+     redistribuições dela (Base dos Dados, painéis estaduais, recortes que o
+     próprio usuário monta). Específico antes de genérico, sempre. */
+  const CONCEITOS = [
+    { k: 'nota', rot: 'Nota CAPAG', tipo: 'texto',
+      re: /^(capag|nota|classificacao|conceito)( capag| final| geral)?$|capag[ _]*(nota|final|geral|classif)|nota[ _]*capag/ },
+    { k: 'endiv', rot: 'Endividamento (DC)', tipo: 'misto',
+      re: /endivid|\bdc\b|divida consolidada|indicador i\b|nota.*endivid/ },
+    { k: 'poupanca', rot: 'Poupança corrente (PC)', tipo: 'misto',
+      re: /poupanca|\bpc\b|indicador ii\b|nota.*poupanca/ },
+    { k: 'liquidez', rot: 'Liquidez (IL)', tipo: 'misto',
+      re: /liquidez|\bil\b|indicador iii\b|nota.*liquidez/ },
+    { k: 'ente', rot: 'Ente', tipo: 'texto',
+      re: /^(ente|municipio|nome|no ente|instituicao|cidade)$|nome.*(ente|municipio)|municipio/ },
+    { k: 'uf', rot: 'UF', tipo: 'texto', re: /^(uf|sigla uf|siglauf|uf sigla|estado|sg uf)$/ },
+    { k: 'posicao', rot: 'Posição', tipo: 'texto',
+      re: /posicao|data.*(posicao|referencia|base|apuracao)|exercicio|ano|competencia|referencia$/ },
+    { k: 'populacao', rot: 'População', tipo: 'numero', re: /populac|habitantes/ }
+  ];
+
+  const NOTA_RE = /^[ABCD][+\-]?$/i;
+  const soDigito = (v) => String(v === null || v === undefined ? '' : v).replace(/\D+/g, '');
+
+  /* ---------- posição: a data a que a planilha se refere ---------- */
+  const MESES = { jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5, jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11 };
+  /**
+   * A posição é o que torna uma planilha comparável com outra. Ela pode
+   * estar numa coluna — e frequentemente NÃO está, porque cada arquivo é de
+   * uma posição só e a STN a escreve no NOME: "capag-municipios-posicao-
+   * 2026-set.xlsx". Ler o nome do arquivo é feio e é o que funciona.
+   */
+  function posicaoDe(ds) {
+    const nome = String((ds && ds.name) || '');
+    const n = norm(nome);
+    let ano = null, mes = null;
+    const ma = /(20\d{2})/.exec(n);
+    if (ma) ano = Number(ma[1]);
+    for (const k in MESES) if (new RegExp('(^| )' + k + '($| )').test(n)) { mes = MESES[k]; break; }
+    if (mes === null) {
+      const md = /(20\d{2})[ _\-]?(0[1-9]|1[0-2])($|[ _\-])/.exec(n);
+      if (md) { ano = Number(md[1]); mes = Number(md[2]) - 1; }
+    }
+    if (ano) return { ano: ano, mes: mes, ordem: ano * 100 + (mes === null ? 99 : mes), rot: rotPos(ano, mes), de: 'nome do arquivo' };
+    return null;
+  }
+  function rotPos(ano, mes) {
+    if (mes === null || mes === undefined) return String(ano);
+    const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    return nomes[mes] + '/' + ano;
+  }
+  /** Posição vinda de uma coluna, quando a base traz várias no mesmo arquivo. */
+  function posicaoDaLinha(det, linha) {
+    if (!det.conceitos.posicao) return null;
+    const v = linha[det.conceitos.posicao.col.key];
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number' && v > 1e11) {
+      const d = new Date(v);
+      return { ano: d.getUTCFullYear(), mes: d.getUTCMonth(),
+        ordem: d.getUTCFullYear() * 100 + d.getUTCMonth(), rot: rotPos(d.getUTCFullYear(), d.getUTCMonth()), de: 'coluna' };
+    }
+    const s = String(v);
+    const ma = /(20\d{2})/.exec(s);
+    if (!ma) return null;
+    const ano = Number(ma[1]);
+    let mes = null;
+    const nn = norm(s);
+    for (const k in MESES) if (nn.indexOf(k) >= 0) { mes = MESES[k]; break; }
+    return { ano: ano, mes: mes, ordem: ano * 100 + (mes === null ? 99 : mes), rot: rotPos(ano, mes), de: 'coluna' };
+  }
+
+  /* =========================================================
+     RECONHECER A BASE
+     ========================================================= */
+  function detectar(ds) {
+    if (!ds || !ds.columns || !ds.rows || !ds.rows.length) return { ok: false, motivo: 'base vazia' };
+    const cols = ds.columns.filter((c) => !c.virtual);
+    const rot = (c) => norm(c.label || c.key);
+    const amostra = ds.rows.slice(0, Math.min(400, ds.rows.length));
+
+    /* O código do IBGE é a chave para cruzar com os 5.570 embutidos. Achado
+       pelo CONTEÚDO: 7 dígitos na maioria das linhas E que existam de fato
+       no cadastro. Só o comprimento não basta — há muita coluna de 7 dígitos
+       que não é município. */
+    let ibgeCol = null, melhor = 0;
+    for (const c of cols) {
+      let bons = 0, validos = 0;
+      for (const r of amostra) {
+        const d = soDigito(r[c.key]);
+        if (d.length !== 7) continue;
+        bons++;
+        if (AG.municipios && AG.municipios.porCodigo(d)) validos++;
+      }
+      const taxa = validos / (amostra.length || 1);
+      const pontos = taxa + (/ibge|cod.*mun|mun.*cod/.test(rot(c)) ? 1 : 0);
+      if (taxa >= 0.5 && pontos > melhor) { melhor = pontos; ibgeCol = c; }
+    }
+
+    const conceitos = {};
+    const usados = new Set([ibgeCol && ibgeCol.key].filter(Boolean));
+    for (const cc of CONCEITOS) {
+      for (const c of cols) {
+        if (usados.has(c.key)) continue;
+        if (!cc.re.test(rot(c))) continue;
+        conceitos[cc.k] = { col: c, rot: cc.rot, tipo: cc.tipo };
+        usados.add(c.key);
+        break;
+      }
+    }
+
+    /* A coluna da NOTA tem de conter notas. Um rótulo que diz "capag" mas
+       guarda outra coisa é armadilha, e o conteúdo é quem decide. */
+    let notaOk = false;
+    if (conceitos.nota) {
+      const k = conceitos.nota.col.key;
+      const vals = amostra.map((r) => String(r[k] === null || r[k] === undefined ? '' : r[k]).trim()).filter(Boolean);
+      notaOk = vals.length > 0 && vals.filter((v) => NOTA_RE.test(v)).length / vals.length >= 0.7;
+    }
+    if (!notaOk && conceitos.nota) delete conceitos.nota;
+    /* Se o rótulo não entregou, procura a coluna que CONTÉM notas A/B/C/D. */
+    if (!conceitos.nota) {
+      for (const c of cols) {
+        if (usados.has(c.key)) continue;
+        const vals = amostra.map((r) => String(r[c.key] === null || r[c.key] === undefined ? '' : r[c.key]).trim()).filter(Boolean);
+        if (vals.length && vals.filter((v) => NOTA_RE.test(v)).length / vals.length >= 0.9) {
+          conceitos.nota = { col: c, rot: 'Nota CAPAG', tipo: 'texto' };
+          usados.add(c.key);
+          break;
+        }
+      }
+    }
+
+    const temChave = !!ibgeCol || !!(conceitos.ente && conceitos.uf);
+    const ok = temChave && !!conceitos.nota;
+    return {
+      ok: ok,
+      motivo: !temChave
+        ? 'não achei como identificar o município: nem uma coluna de código do IBGE com códigos que existem, nem o par nome do ente + UF'
+        : !conceitos.nota
+          ? 'achei o município, mas nenhuma coluna com notas A, B, C ou D — sem a nota isto não é uma base de CAPAG'
+          : null,
+      ibgeCol: ibgeCol, conceitos: conceitos,
+      posicao: posicaoDe(ds),
+      achados: CONCEITOS.filter((x) => conceitos[x.k]).map((x) => x.k),
+      temIndicadores: !!(conceitos.endiv || conceitos.poupanca || conceitos.liquidez)
+    };
+  }
+
+  /** Todas as bases abertas que são CAPAG, da posição mais nova para a mais velha. */
+  function basesCapag(datasets) {
+    const out = [];
+    for (const ds of (datasets || (AG.APP && AG.APP.datasets) || [])) {
+      const det = detectar(ds);
+      if (det.ok) out.push({ ds: ds, det: det });
+    }
+    return out.sort((a, b) => ((b.det.posicao && b.det.posicao.ordem) || 0) - ((a.det.posicao && a.det.posicao.ordem) || 0));
+  }
+
+  /* =========================================================
+     ACHAR O MUNICÍPIO
+     ========================================================= */
+  /**
+   * Resolve "Fortaleza", "Fortaleza CE" ou o código direto para UM município
+   * do cadastro embutido. Homônimo NÃO é resolvido por sorteio: devolve a
+   * lista para quem chamou decidir — a mesma regra do resto do agente.
+   */
+  function resolverMunicipio(termo, uf) {
+    const t = String(termo || '').trim();
+    if (!t) return { erro: 'sem município na pergunta' };
+    const d = soDigito(t);
+    if (d.length === 7 && AG.municipios.porCodigo(d)) {
+      return { municipio: AG.municipios.porCodigo(d) };
+    }
+    const achados = AG.municipios.porNome(t, uf || null);
+    if (!achados.length) return { erro: 'não achei o município “' + t + '”' + (uf ? ' em ' + uf : '') + ' no cadastro do IBGE' };
+    if (achados.length > 1) return { ambiguos: achados };
+    return { municipio: achados[0] };
+  }
+
+  /** A linha daquele município em cada posição carregada. */
+  function linhasDe(bases, mun) {
+    const alvo = String(mun.codigo);
+    const out = [];
+    for (const b of bases) {
+      const { ds, det } = b;
+      for (const r of ds.rows) {
+        let casa = false;
+        if (det.ibgeCol) {
+          casa = soDigito(r[det.ibgeCol.key]) === alvo;
+        } else if (det.conceitos.ente && det.conceitos.uf) {
+          casa = norm(r[det.conceitos.ente.col.key]) === norm(mun.nome) &&
+            String(r[det.conceitos.uf.col.key] || '').toUpperCase().trim() === mun.uf;
+        }
+        if (!casa) continue;
+        const pos = posicaoDaLinha(det, r) || det.posicao;
+        out.push({ ds: ds, det: det, linha: r, posicao: pos });
+      }
+    }
+    /* Sem posição conhecida, a ordem de carregamento é o melhor palpite — e
+       a tela diz que é palpite, em vez de fingir que sabe a data. */
+    return out.sort((a, b) => ((b.posicao && b.posicao.ordem) || 0) - ((a.posicao && a.posicao.ordem) || 0));
+  }
+
+  /** Valor de um conceito numa linha, já com o rótulo certo. */
+  function campo(det, linha, k) {
+    const c = det.conceitos[k];
+    if (!c) return null;
+    const v = linha[c.col.key];
+    if (v === null || v === undefined || String(v).trim() === '') return null;
+    return { rot: c.rot, valor: v, nota: NOTA_RE.test(String(v).trim()) ? String(v).trim().toUpperCase() : null };
+  }
+
+  /* O que cada indicador mede, em português. A nota sozinha é uma letra; o
+     que informa é saber qual das três pernas está pesando. */
+  const EXPLICA = {
+    endiv: 'Dívida consolidada sobre a receita corrente líquida — quanto o ente deve em relação ao que arrecada.',
+    poupanca: 'Despesa corrente sobre receita corrente ajustada — se a operação cabe na arrecadação sem contar com receita de capital.',
+    liquidez: 'Obrigações financeiras sobre disponibilidade de caixa — se há dinheiro para pagar o que vence.'
+  };
+
+  /* A metodologia mudou duas vezes em dois anos. Comparar posições de
+     regimes diferentes é comparar régua com régua diferente, e a tela tem
+     de dizer isso em vez de desenhar uma trajetória contínua que não é. */
+  const REGIMES = [
+    { ate: 202312, nome: 'anterior à Portaria MF 1.583/2023' },
+    { ate: 202411, nome: 'Portaria MF 1.583/2023' },
+    { ate: 202603, nome: 'Portaria MF 1.583/2023 com a alteração da 1.764/2024' },
+    { ate: 999999, nome: 'Portaria STN/MF 857/2026' }
+  ];
+  function regimeDe(pos) {
+    if (!pos) return null;
+    const ord = pos.ano * 100 + (pos.mes === null || pos.mes === undefined ? 11 : pos.mes + 1);
+    for (const r of REGIMES) if (ord <= r.ate) return r.nome;
+    return REGIMES[REGIMES.length - 1].nome;
+  }
+
+  AG.capag = {
+    detectar, basesCapag, resolverMunicipio, linhasDe, campo,
+    posicaoDe, posicaoDaLinha, regimeDe, CONCEITOS, EXPLICA, REGIMES, NOTA_RE
+  };
+})();
+
+
 /* ==== 79-lamina.js ==== */
 /* ============================================================
    79 — LÂMINA DE FUNDO: O CUSTO E AS CONDIÇÕES, POR CNPJ
@@ -14527,6 +14834,11 @@ const RECEITAS_ARQUIVO = [
 
   function rerunLast() { if (lastAsk) ask(lastAsk); }
 
+  /* Intenções cuja tela é útil mesmo sem nenhuma base carregada: ela explica
+     onde o dado está e por que ele não chega por rede. Entrar aqui é decisão
+     de projeto, não automatismo — a tela tem de suportar `ds` nulo. */
+  const RESPONDE_SEM_BASE = { capag: 1 };
+
   function answer(question, body) {
     body.innerHTML = '';
 
@@ -14561,7 +14873,18 @@ const RECEITAS_ARQUIVO = [
        está fora daqui, e com base carregada exige que a frase traga ao menos
        um parâmetro — senão toda pergunta analítica viraria oferta de rede. */
     let ofertaPendente = null;
-    if (AG.pedidoFonte && AG.pedidoUI) {
+    /* O mesmo princípio de precedência de novo, agora contra a oferta de
+       fonte pública: a frase que diz QUAL ANÁLISE quer não está pedindo uma
+       fonte nova. "CAPAG de Fortaleza" com a tela vazia precisa cair na tela
+       da CAPAG — que é quem sabe explicar que aquela API não existe e qual é
+       a planilha — e não virar oferta de consulta ao IBGE por causa da
+       palavra "Fortaleza".
+
+       A separação é limpa e foi medida: "RREO de Fortaleza em 2024",
+       "municípios do Ceará", "RGF de Fortaleza" e "entes do Ceará" não casam
+       com regra de intenção nenhuma, então continuam chegando aqui como
+       sempre chegaram. */
+    if (AG.pedidoFonte && AG.pedidoUI && !mandaOutraIntencao) {
       const ped = AG.pedidoFonte.paraPergunta(question, AG.ultimaConsulta, { temBase: !!APP.datasets.length });
       if (ped) {
         /* O recorte pedido pode já estar carregado. Quem tem o RREO de 2024 na
@@ -14597,6 +14920,21 @@ const RECEITAS_ARQUIVO = [
     }
 
     if (!APP.datasets.length) {
+      /* Antes da oferta genérica: algumas telas sabem responder de tela vazia,
+         e melhor que a oferta. A CAPAG é o caso — quem digita "CAPAG de
+         Fortaleza" sem nada carregado precisa saber que a API que circula em
+         script de exemplo não existe, que o caminho é a planilha do CKAN e
+         que uma posição cobre o país inteiro. A oferta de download diria só
+         "baixe este arquivo", e o usuário tentaria a API de novo amanhã.
+         É a mesma precedência de sempre: o vocabulário do agente vale mais
+         que o casamento genérico do catálogo. */
+      const semBase = AG.nlu.regraExplicita(question);
+      if (semBase && RESPONDE_SEM_BASE[semBase] && AG.renderers[semBase]) {
+        APP.ultimoPlano = { question: question, intent: semBase, confidence: 0.9,
+          dimensions: [], filters: [], notes: [] };
+        AG.renderers[semBase](body, null, APP.ultimoPlano, question);
+        return;
+      }
       /* Com a tela vazia, uma fonte de download ainda é uma resposta melhor
          que "arraste um arquivo": diz QUAL arquivo arrastar. */
       if (ofereceArquivo(body, question)) return;
@@ -25279,6 +25617,414 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.registrosUI = { colunasIniciais, TETO_COLUNAS };
+})();
+
+
+/* ==== 100-render-capag.js ==== */
+/* ============================================================
+   100 — A TELA DA CAPAG
+
+   "CAPAG de Fortaleza" resolve UF + município pelos 5.570 do cadastro
+   embutido, acha o código do IBGE, cruza com as planilhas carregadas e
+   responde — sem rede, porque a CAPAG não tem API.
+
+   A tela mostra a posição MAIS RECENTE como resposta e, quando há mais de
+   uma carregada, a TRAJETÓRIA ao lado: uma nota isolada diz onde o ente
+   está, a sequência diz para onde ele vai. E se as posições forem de
+   metodologias diferentes, isso é dito — senão a trajetória desenha uma
+   linha contínua sobre duas réguas distintas.
+   ============================================================ */
+
+(function () {
+  const el = AG.el, charts = AG.charts;
+  const CP = AG.capag;
+  const U = () => AG.ui;
+  const ins = (l, i, h) => AG.insights.ins(l, i, h);
+
+  /* A nota é uma letra, e a cor é a leitura mais rápida dela. A ordem é a
+     do próprio Tesouro: A é a melhor, D é a pior. */
+  const CORES = { A: 2, B: 1, C: 3, D: 4 };
+  const SENTIDO = {
+    A: 'boa — o ente atende aos três indicadores e pode contratar operação de crédito com garantia da União',
+    B: 'aceitável — um dos indicadores ficou na faixa intermediária',
+    C: 'fraca — pelo menos um indicador está fora da faixa, e isso barra a garantia da União',
+    D: 'sem classificação válida — dado não entregue, inconsistente ou fora das condições de apuração'
+  };
+  /* Palavras que descrevem um conjunto, nunca um ente. */
+  const COLETIVO = /^(municipios?|cidades?|entes?|prefeituras?|capitais|estados?|ufs?|geral|todos|todas)$/;
+
+  const cor = (n) => AG.PALETTE[CORES[String(n || '').toUpperCase()[0]] === undefined ? 0 : CORES[String(n || '').toUpperCase()[0]]];
+
+  /** UF e município ditos na pergunta. */
+  function alvoDaPergunta(question, plan) {
+    const q = String(question || '');
+    /* Código do IBGE direto resolve sem ambiguidade nenhuma. */
+    const cod = /\b(\d{7})\b/.exec(q.replace(/\D/g, ' '));
+    if (cod && AG.municipios.porCodigo(cod[1])) return { termo: cod[1], uf: null };
+
+    /* UF escrita em MAIÚSCULA no texto original, como no resto do agente —
+       em minúscula "se", "to" e "pa" são palavras, não siglas. */
+    let uf = null;
+    const sig = /\b([A-Z]{2})\b/g;
+    let m;
+    while ((m = sig.exec(q)) !== null) {
+      const achou = AG.municipios.ufPor(m[1]);
+      if (achou) { uf = achou.sigla; break; }
+    }
+    if (!uf) {
+      for (const u of AG.municipios.todasUF()) {
+        if (AG.norm(q).indexOf(AG.norm(u.nome)) >= 0) { uf = u.sigla; break; }
+      }
+    }
+    /* O município: o trecho depois de "de/do/da/em", tirando a UF. */
+    const lim = /(?:capag|capacidade de pagamento|nota)\s+(?:d[oae]s?\s+|em\s+|para\s+)?(?:(?:munic[íi]pio|cidade|ente)\s+(?:d[oae]\s+)?)?(.+)$/i.exec(q.trim());
+    let termo = lim ? lim[1] : '';
+    termo = termo.replace(/[?.!,;]+$/, '').trim();
+    if (uf) {
+      termo = termo.replace(new RegExp('\\b' + uf + '\\b', 'g'), '')
+        .replace(new RegExp(AG.municipios.ufPor(uf).nome, 'i'), '')
+        .replace(/\b(d[oae]s?|em|no|na)\b\s*$/i, '').replace(/[-–,\/]+\s*$/, '').trim();
+    }
+    /* "os municípios do Ceará" não nomeia um município: nomeia o estado
+       inteiro. Um substantivo coletivo sozinho é ausência de alvo, não um
+       nome a procurar no cadastro — senão o agente responde "não achei o
+       município 'municípios'", que é a pior forma de errar: parece dado
+       faltando quando na verdade a pergunta foi lida errado. */
+    termo = termo.replace(/^(?:todos?|todas?)\s+(?:[oa]s\s+)?/i, '').replace(/^[oa]s\s+/i, '').trim();
+    if (COLETIVO.test(AG.norm(termo))) termo = '';
+
+    /* Um filtro do plano sobre coluna de município também serve de alvo. */
+    if (!termo) {
+      for (const f of (plan && plan.filters) || []) {
+        if (f.value && /municip|ente|cidade/i.test(String(f.column))) {
+          const v = String([].concat(f.value)[0]);
+          if (!COLETIVO.test(AG.norm(v))) { termo = v; break; }
+        }
+      }
+    }
+    return { termo: termo, uf: uf };
+  }
+
+  AG.renderers.capag = function (body, ds, plan, question) {
+    const bases = CP.basesCapag(AG.APP.datasets);
+    if (!bases.length) return semBase(body, ds, question, plan);
+
+    const alvo = alvoDaPergunta(question, plan);
+    if (!alvo.termo && !alvo.uf) return semAlvo(body, ds, bases, question, plan);
+
+    /* UF sem município: a pergunta é sobre o estado inteiro. */
+    if (!alvo.termo && alvo.uf) return porUF(body, ds, bases, alvo.uf, question, plan);
+
+    const res = CP.resolverMunicipio(alvo.termo, alvo.uf);
+    if (res.erro) return naoAchou(body, ds, bases, alvo, res, question, plan);
+    if (res.ambiguos) return ambiguo(body, ds, bases, alvo, res, question, plan);
+
+    const mun = res.municipio;
+    const linhas = CP.linhasDe(bases, mun);
+    if (!linhas.length) {
+      return foraDaBase(body, ds, bases, mun, question, plan);
+    }
+
+    const atual = linhas[0];
+    const nota = CP.campo(atual.det, atual.linha, 'nota');
+    const letra = nota && nota.nota ? nota.nota[0] : (nota ? String(nota.valor).trim()[0] : '—');
+
+    head(body, 'CAPAG de ' + mun.nome + ' — ' + mun.uf,
+      'código IBGE <b>' + mun.codigo + '</b>' +
+      (atual.posicao ? ' · posição <b>' + AG.esc(atual.posicao.rot) + '</b>' +
+        (atual.posicao.de === 'nome do arquivo' ? ' (lida do nome do arquivo)' : '') : ' · posição não identificada') +
+      ' · ' + linhas.length + ' posição(ões) carregada(s)');
+
+    /* --- a nota e as três pernas --- */
+    const ind = ['endiv', 'poupanca', 'liquidez'].map((k) => ({ k: k, c: CP.campo(atual.det, atual.linha, k) }));
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('Nota CAPAG', letra, SENTIDO[letra] ? SENTIDO[letra].split(' — ')[0] : 'como publicada pelo Tesouro')
+    ].concat(ind.filter((x) => x.c).map((x) =>
+      U().kpi(x.c.rot, x.c.nota || String(x.c.valor), CP.EXPLICA[x.k].split(' — ')[0])))));
+
+    if (SENTIDO[letra]) {
+      body.appendChild(U().insightNode(ins(letra === 'A' ? 'good' : letra === 'B' ? 'info' : 'warn',
+        letra === 'A' ? '✓' : letra === 'B' ? 'ⓘ' : '⚠',
+        '<b>Nota ' + letra + '</b>: ' + SENTIDO[letra] + '.')));
+    }
+
+    /* A nota é da STN, e é assim que continua. */
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'A nota e os três indicadores vêm <b>calculados pelo Tesouro</b> na planilha — o agente não os recalcula. ' +
+      'A CAPAG é classificação regulada e a metodologia mudou duas vezes em dois anos ' +
+      '(Portarias MF 1.583/2023 e 1.764/2024, e STN/MF 857/2026); reimplementar as faixas aqui seria inventar ' +
+      'uma autoridade que este arquivo não tem. O que o agente faz é cruzar, comparar e explicar.' +
+      (ind.filter((x) => x.c).length
+        ? '<br><br>' + ind.filter((x) => x.c).map((x) => '<b>' + x.c.rot + '</b>: ' + CP.EXPLICA[x.k]).join('<br>')
+        : ''))));
+
+    /* --- a trajetória, que é o que a nota isolada não conta --- */
+    if (linhas.length > 1) trajetoria(body, linhas, mun);
+
+    /* --- onde este município cai dentro da própria UF --- */
+    contexto(body, bases, atual, mun);
+
+    foot(body, question, plan, atual.ds, linhas.length);
+    return { headline: 'CAPAG ' + letra + ' · ' + mun.nome + '/' + mun.uf };
+  };
+
+  /* =========================================================
+     TRAJETÓRIA
+     ========================================================= */
+  function trajetoria(body, linhas, mun) {
+    const ord = linhas.slice().reverse();          // da mais antiga para a mais nova
+    const regimes = Array.from(new Set(ord.map((x) => CP.regimeDe(x.posicao)).filter(Boolean)));
+
+    const cols = [{ key: 'pos', label: 'Posição' }, { key: 'nota', label: 'Nota CAPAG' }];
+    const tem = { endiv: false, poupanca: false, liquidez: false };
+    for (const x of ord) for (const k in tem) if (CP.campo(x.det, x.linha, k)) tem[k] = true;
+    if (tem.endiv) cols.push({ key: 'endiv', label: 'Endividamento' });
+    if (tem.poupanca) cols.push({ key: 'poupanca', label: 'Poupança corrente' });
+    if (tem.liquidez) cols.push({ key: 'liquidez', label: 'Liquidez' });
+    cols.push({ key: 'metodo', label: 'Metodologia' });
+
+    const rows = ord.map((x) => {
+      const o = {
+        pos: x.posicao ? x.posicao.rot : 'posição não identificada',
+        nota: (CP.campo(x.det, x.linha, 'nota') || {}).valor || '—',
+        metodo: CP.regimeDe(x.posicao) || '—'
+      };
+      for (const k in tem) {
+        if (!tem[k]) continue;
+        const c = CP.campo(x.det, x.linha, k);
+        o[k] = c ? (c.nota || c.valor) : '—';
+      }
+      return o;
+    });
+
+    const c = charts.card({
+      title: 'A trajetória da nota',
+      subtitle: ord.length + ' posições carregadas, da mais antiga para a mais recente',
+      tableData: { columns: cols, rows: rows }
+    });
+    c.body.appendChild(charts.dataTable({ columns: cols, rows: rows }, { titulo: 'capag-' + AG.slug(mun.nome) }));
+    body.appendChild(c.wrap);
+
+    const primeira = rows[0].nota, ultima = rows[rows.length - 1].nota;
+    if (primeira !== ultima) {
+      const piorou = String(ultima)[0] > String(primeira)[0];
+      body.appendChild(U().insightNode(ins(piorou ? 'crit' : 'good', piorou ? '✕' : '✓',
+        'A nota <b>' + (piorou ? 'piorou' : 'melhorou') + '</b> no período carregado: ' +
+        '<b>' + AG.esc(String(primeira)) + '</b> em ' + AG.esc(rows[0].pos) +
+        ' → <b>' + AG.esc(String(ultima)) + '</b> em ' + AG.esc(rows[rows.length - 1].pos) + '.')));
+    }
+
+    /* O aviso que impede a leitura errada mais provável desta tela. */
+    if (regimes.length > 1) {
+      body.appendChild(U().insightNode(ins('warn', '⚠',
+        '<b>Estas posições não são da mesma metodologia.</b> Aparecem aqui ' + regimes.length +
+        ' regimes — ' + regimes.map((r) => AG.esc(r)).join('; ') + '. A CAPAG mudou de régua no período, ' +
+        'então uma nota que "piora" pode ser o critério que apertou, e não o ente que piorou. ' +
+        'Comparar posições de regimes diferentes exige dizer isso junto do número.')));
+    }
+  }
+
+  /* =========================================================
+     CONTEXTO: O ENTE DENTRO DA PRÓPRIA UF
+     ========================================================= */
+  function contexto(body, bases, atual, mun) {
+    const det = atual.det;
+    if (!det.conceitos.nota) return;
+    const notaCol = det.conceitos.nota.col.key;
+
+    /* Os municípios da mesma UF, na MESMA posição — comparar com outra
+       posição seria misturar fotografias de momentos diferentes. */
+    const daUF = [];
+    for (const r of atual.ds.rows) {
+      let uf = null;
+      if (det.ibgeCol) {
+        const m = AG.municipios.porCodigo(String(r[det.ibgeCol.key]).replace(/\D/g, ''));
+        uf = m && m.uf;
+      } else if (det.conceitos.uf) {
+        uf = String(r[det.conceitos.uf.col.key] || '').toUpperCase().trim();
+      }
+      if (uf !== mun.uf) continue;
+      const v = String(r[notaCol] === null || r[notaCol] === undefined ? '' : r[notaCol]).trim().toUpperCase();
+      if (v) daUF.push(v[0]);
+    }
+    if (daUF.length < 5) return;
+
+    const cont = {};
+    for (const n of daUF) cont[n] = (cont[n] || 0) + 1;
+    const ordem = ['A', 'B', 'C', 'D'].filter((x) => cont[x]);
+    const minha = String((CP.campo(det, atual.linha, 'nota') || {}).valor || '').trim().toUpperCase()[0];
+
+    const c = charts.card({
+      title: 'Como está o resto do estado',
+      subtitle: daUF.length + ' municípios de ' + mun.uf + ' na mesma posição · ' + mun.nome + ' tem ' + (minha || '—')
+    });
+    charts.renderInto(c.body, (w) => charts.barsH({
+      width: w, format: 'number', measureLabel: 'Municípios',
+      data: ordem.map((n) => ({
+        label: 'Nota ' + n + (n === minha ? ' (inclui ' + mun.nome + ')' : ''),
+        value: cont[n], color: cor(n)
+      }))
+    }));
+    body.appendChild(c.wrap);
+
+    if (minha && cont[minha]) {
+      const melhores = ordem.filter((n) => n < minha).reduce((a, n) => a + cont[n], 0);
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        AG.esc(mun.nome) + ' tem nota <b>' + minha + '</b>. Em ' + mun.uf + ', <b>' + melhores +
+        '</b> município(s) têm nota melhor e <b>' +
+        ordem.filter((n) => n > minha).reduce((a, n) => a + cont[n], 0) +
+        '</b> têm pior, entre os ' + daUF.length + ' com nota nesta posição.')));
+    }
+  }
+
+  /* =========================================================
+     A UF INTEIRA
+     ========================================================= */
+  function porUF(body, ds, bases, uf, question, plan) {
+    const b = bases[0];
+    const det = b.det, notaCol = det.conceitos.nota.col.key;
+    const linhas = [];
+    for (const r of b.ds.rows) {
+      let m = null;
+      if (det.ibgeCol) m = AG.municipios.porCodigo(String(r[det.ibgeCol.key]).replace(/\D/g, ''));
+      const u = m ? m.uf : (det.conceitos.uf ? String(r[det.conceitos.uf.col.key] || '').toUpperCase().trim() : null);
+      if (u !== uf) continue;
+      const nota = String(r[notaCol] === null || r[notaCol] === undefined ? '' : r[notaCol]).trim().toUpperCase();
+      linhas.push({
+        municipio: m ? m.nome : (det.conceitos.ente ? String(r[det.conceitos.ente.col.key] || '') : '—'),
+        codigo: m ? m.codigo : null, nota: nota || '—',
+        endiv: (CP.campo(det, r, 'endiv') || {}).valor, poupanca: (CP.campo(det, r, 'poupanca') || {}).valor,
+        liquidez: (CP.campo(det, r, 'liquidez') || {}).valor
+      });
+    }
+    if (!linhas.length) return naoAchou(body, ds, bases, { termo: uf, uf: uf },
+      { erro: 'nenhum município de ' + uf + ' na planilha carregada' }, question, plan);
+
+    linhas.sort((a, b2) => String(a.nota).localeCompare(String(b2.nota)) || a.municipio.localeCompare(b2.municipio, 'pt-BR'));
+    head(body, 'CAPAG dos municípios de ' + uf,
+      linhas.length + ' municípios' + (b.det.posicao ? ' · posição <b>' + AG.esc(b.det.posicao.rot) + '</b>' : ''));
+
+    const cont = {};
+    for (const l of linhas) cont[l.nota[0]] = (cont[l.nota[0]] || 0) + 1;
+    body.appendChild(el('div', { class: 'kpis' },
+      ['A', 'B', 'C', 'D'].filter((n) => cont[n]).map((n) =>
+        U().kpi('Nota ' + n, String(cont[n]), AG.fmtPct(cont[n] / linhas.length, 0) + ' dos municípios'))));
+
+    const cols = [{ key: 'municipio', label: 'Município' }, { key: 'nota', label: 'Nota CAPAG' },
+      { key: 'endiv', label: 'Endividamento' }, { key: 'poupanca', label: 'Poupança corrente' },
+      { key: 'liquidez', label: 'Liquidez' }];
+    const c = charts.card({
+      title: 'Todos os municípios de ' + uf,
+      subtitle: 'ordene clicando no cabeçalho · filtre por nota em ⛃ Filtros',
+      tools: false, onExport: false
+    });
+    c.body.appendChild(charts.dataTable({ columns: cols, rows: linhas }, { titulo: 'capag-' + uf }));
+    body.appendChild(c.wrap);
+    foot(body, question, plan, b.ds, linhas.length);
+    return { headline: linhas.length + ' municípios de ' + uf + ' com CAPAG' };
+  }
+
+  /* =========================================================
+     OS CAMINHOS QUE NÃO DÃO CERTO
+     ========================================================= */
+  function semBase(body, ds, question, plan) {
+    head(body, 'A CAPAG não está carregada', 'e não dá para buscá-la por API');
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      '<b>A CAPAG não tem API.</b> O endpoint que circula em script de exemplo — ' +
+      '<code>apidatalake.tesouro.gov.br/v1/siconfi/capag</code> — responde <b>404</b>, e a variante em ' +
+      '<code>/ords/siconfi/tt/capag</code> também. Conferido em 26/09/2026. Não é limitação do agente: ' +
+      'a CAPAG simplesmente não é servida por endpoint.')));
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'O que existe é a <b>planilha</b>, publicada no CKAN do Tesouro por data de posição, com <b>todos os ' +
+      'municípios de uma vez</b> — uma posição cobre o país inteiro. Baixe e arraste para cá: a partir daí ' +
+      '"CAPAG de Fortaleza" é busca local, resolvida pelos 5.570 municípios já embutidos. ' +
+      'Carregue <b>mais de uma posição</b> e o agente monta a trajetória da nota.')));
+    body.appendChild(botaoFonte('capag-municipios'));
+    foot(body, question, plan, ds, 0);
+    return { headline: 'carregue a planilha da CAPAG' };
+  }
+
+  function semAlvo(body, ds, bases, question, plan) {
+    const b = bases[0];
+    const n = b.ds.rows.length;
+    head(body, 'Qual município?', n + ' na planilha' + (b.det.posicao ? ' · posição ' + b.det.posicao.rot : ''));
+    body.appendChild(U().insightNode(ins('info', 'ⓘ',
+      'A planilha está carregada e reconhecida. Diga o município — <code>CAPAG de Fortaleza</code>, ' +
+      '<code>CAPAG de Bonito PE</code> (a UF resolve o homônimo) ou o código do IBGE direto. ' +
+      'Para o estado inteiro: <code>CAPAG dos municípios do Ceará</code>.')));
+    foot(body, question, plan, b.ds, n);
+    return { headline: 'diga o município' };
+  }
+
+  function naoAchou(body, ds, bases, alvo, res, question, plan) {
+    head(body, 'Não achei esse município', AG.esc(res.erro || ''));
+    body.appendChild(U().insightNode(ins('warn', '⚠', AG.esc(res.erro || 'não encontrado') + '.')));
+    if (alvo.termo) {
+      const chave = AG.norm(alvo.termo).split(' ')[0];
+      const perto = (AG.municipios.porNome(alvo.termo) || []);
+      if (perto.length) {
+        body.appendChild(U().insightNode(ins('info', 'ⓘ',
+          'Existe em: ' + perto.map((m) => '<code>' + AG.esc(m.nome) + '/' + m.uf + '</code>').join(', ') +
+          '. Acrescente a UF à pergunta.')));
+      }
+    }
+    foot(body, question, plan, bases[0].ds, 0);
+    return { headline: 'município não encontrado' };
+  }
+
+  function ambiguo(body, ds, bases, alvo, res, question, plan) {
+    head(body, res.ambiguos.length + ' municípios se chamam “' + alvo.termo + '”', 'diga a UF');
+    /* Homônimo não se resolve por sorteio — a mesma regra do resto do agente. */
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      'Não escolhi por você: responder pelo primeiro em ordem alfabética daria uma nota plausível de outro ' +
+      'município. Acrescente a UF — <code>CAPAG de ' + AG.esc(alvo.termo) + ' ' + res.ambiguos[0].uf + '</code>.')));
+    const cols = [{ key: 'nome', label: 'Município' }, { key: 'uf', label: 'UF' }, { key: 'codigo', label: 'Código IBGE' }];
+    const c = charts.card({ title: 'Qual deles?', tools: false, onExport: false });
+    c.body.appendChild(charts.dataTable({ columns: cols, rows: res.ambiguos }, { titulo: 'homonimos' }));
+    body.appendChild(c.wrap);
+    foot(body, question, plan, bases[0].ds, res.ambiguos.length);
+    return { headline: res.ambiguos.length + ' municípios com esse nome' };
+  }
+
+  function foraDaBase(body, ds, bases, mun, question, plan) {
+    head(body, mun.nome + '/' + mun.uf + ' não está na planilha',
+      'código IBGE ' + mun.codigo + ' · ' + bases[0].ds.rows.length + ' municípios na base');
+    body.appendChild(U().insightNode(ins('warn', '⚠',
+      'O município existe no cadastro do IBGE, mas não tem linha na planilha carregada. Acontece quando o ' +
+      'ente <b>não entregou</b> as informações da posição, quando a planilha é um recorte, ou quando a nota ' +
+      'seria <b>D</b> por falta de dado — e nesse caso alguns recortes simplesmente omitem a linha. ' +
+      'Vale conferir na posição anterior.')));
+    foot(body, question, plan, bases[0].ds, 0);
+    return { headline: mun.nome + ' sem linha na planilha' };
+  }
+
+  function botaoFonte(id) {
+    const row = el('div', { class: 'btn-row', style: { marginTop: '10px' } });
+    row.appendChild(el('button', {
+      class: 'btn sm primary', text: '🌐 Abrir a ficha da fonte da CAPAG',
+      onclick: () => {
+        const f = (AG.fontes.FONTES || []).find((x) => x.id === id);
+        if (f && AG.fontesUI && AG.fontesUI.detalhe) AG.fontesUI.detalhe(f);
+        else if (AG.fontesUI) AG.fontesUI.abrirFontes();
+      }
+    }));
+    return row;
+  }
+
+  function head(body, title, sub) {
+    body.appendChild(el('div', { class: 'headline', text: title }));
+    body.appendChild(el('div', { class: 'subline', html: sub }));
+  }
+  function foot(body, question, plan, ds, n) {
+    /* A tela da CAPAG responde de tela vazia, então `ds` pode ser nulo aqui.
+       O "como cheguei a esse resultado" é um SELECT sobre uma fonte: sem
+       fonte não há SELECT que descrever, e inventar um seria pior que
+       omitir. O rodapé de ações continua saindo. */
+    if (ds) body.appendChild(U().planDetails(plan, ds, { plan, ds, rowsScanned: (ds.rows || []).length, rowsMatched: n, elapsed: 0 }));
+    body.appendChild(U().footRow(question, plan, body));
+  }
+
+  AG.capagUI = { alvoDaPergunta, SENTIDO };
 })();
 
 </script>
