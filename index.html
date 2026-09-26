@@ -171,6 +171,14 @@ button { cursor: pointer; }
 .btn.primary[disabled]:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-muted); }
 .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* ---------- escolha do aprofundamento ---------- */
+/* Duas saídas para o mesmo clique, lado a lado e com a diferença escrita:
+   descer um nível responde "de que é feito", listar responde "quais são". */
+.drill-ops { display: grid; gap: 8px; }
+.btn.drill-op { text-align: left; padding: 11px 13px; line-height: 1.35; }
+.drill-op-t { font-size: 13px; font-weight: 600; }
+.drill-op-d { font-size: 11.5px; font-weight: 450; opacity: .8; margin-top: 2px; }
+
 /* ---------- topbar ---------- */
 .topbar {
   height: 52px; flex: none; border-bottom: 1px solid var(--border);
@@ -534,7 +542,10 @@ pre.plan-body .n { color: #c98500; }
 .sugg:hover { border-color: var(--series-1); color: var(--text-primary); background: var(--surface-3); }
 
 /* ---------- estado vazio ---------- */
-.empty { max-width: 640px; margin: 8vh auto 0; text-align: center; }
+/* Altura fixa, não 8vh: em monitor alto o vão dobrava, e sobre ele ainda
+   vinha um padding-top embutido no JS — duas folgas empilhadas que se
+   somavam a mais de 150 px de nada no topo. Uma só, previsível. */
+.empty { max-width: 640px; margin: 44px auto 0; text-align: center; }
 .empty h2 { font-size: 21px; font-weight: 620; margin: 0 0 8px; letter-spacing: -.02em; }
 .empty p { color: var(--text-secondary); font-size: 13.5px; margin: 0 0 22px; }
 .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; text-align: left; }
@@ -1921,17 +1932,27 @@ AG.colorFor = function (key, index) {
     const sheetEls = tags(wb, 'sheet');
     const base = file.name.replace(/\.[^.]+$/, '');
     const out = [];
+    /* Aba que não vira base tem de ser DITA. Uma pasta de trabalho com seis
+       abas que entra como três deixa o usuário procurando na tela uma base
+       que nunca foi criada — e concluindo que o agente perdeu o dado. */
+    const puladas = [];
 
     for (let s = 0; s < sheetEls.length; s++) {
       const sheetName = sheetEls[s].getAttribute('name') || ('Planilha' + (s + 1));
-      if ((sheetEls[s].getAttribute('state') || '') === 'hidden') continue;
+      if ((sheetEls[s].getAttribute('state') || '') === 'hidden') {
+        puladas.push({ nome: sheetName, motivo: 'oculta na pasta de trabalho' });
+        continue;
+      }
       let rid = null;
       for (const a of Array.prototype.slice.call(sheetEls[s].attributes)) {
         if (a.name === 'r:id' || a.localName === 'id') rid = a.value;
       }
       let path = rid ? relMap.get(rid) : null;
       if (!path || !zip.entries.has(path)) path = 'xl/worksheets/sheet' + (s + 1) + '.xml';
-      if (!zip.entries.has(path)) continue;
+      if (!zip.entries.has(path)) {
+        puladas.push({ nome: sheetName, motivo: 'a planilha interna não veio no arquivo' });
+        continue;
+      }
 
       const sd = xdoc(await zip.readText(path));
       const rowEls = tags(sd, 'row');
@@ -1980,13 +2001,19 @@ AG.colorFor = function (key, index) {
       }
       // remove linhas totalmente vazias no fim
       while (dense.length && dense[dense.length - 1].every((v) => v === null || v === '')) dense.pop();
-      if (dense.length < 2) continue;
+      if (dense.length < 2) {
+        puladas.push({ nome: sheetName, motivo: dense.length ? 'só uma linha, sem tabela' : 'vazia' });
+        continue;
+      }
       const table = matrixToTable(dense, sheetEls.length > 1 ? base + ' · ' + sheetName : base, {
         source: file.name, sheet: sheetName, format: 'XLSX'
       });
       if (table.rows.length) out.push(table);
+      else puladas.push({ nome: sheetName, motivo: 'cabeçalho sem linhas de dados abaixo' });
     }
     if (!out.length) throw new Error('Nenhuma planilha com dados encontrada na pasta de trabalho');
+    /* Viaja no meta de cada base do arquivo; a tela de carga lê dali e conta. */
+    if (puladas.length) for (const t of out) t.meta.abasIgnoradas = puladas;
     return out;
   }
 
@@ -10132,10 +10159,18 @@ const RECEITAS_ARQUIVO = [
     const n = parseFloat(String(v).replace(/\./g, '').replace(',', '.').replace(/[^\d.\-]/g, ''));
     return isFinite(n) ? n : null;
   }
+  /* O motor guarda data como TIMESTAMP em milissegundos. A tabela já decidia
+     que a coluna era de data — alinhava à esquerda e oferecia filtro de
+     período por causa disso — mas a célula só era formatada quando o `format`
+     dizia "date". Onde a tela não passa `format` (a lista de registros é o
+     caso) saía `1.755.561.600.000` numa coluna rotulada "Data Emissão": a
+     tabela sabia que era data e mostrava o número mesmo assim. */
+  const ehData = (c) => !!c && (/date|data/.test(String(c.format || '')) ||
+    c.role === 'time' || c._tipo === 'data');
   function celulaTexto(v, c) {
     if (v === null || v === undefined) return '—';
     if (typeof v === 'number') {
-      if (c && /date|data/.test(String(c.format || '')) ) return AG.fmtDate(v);
+      if (ehData(c)) return AG.fmtDate(v);
       return AG.fmtNum(v, c && c.format);
     }
     return String(v);
@@ -14135,7 +14170,7 @@ const RECEITAS_ARQUIVO = [
   function renderEmptyState() {
     const stream = AG.$('#stream .stream-inner');
     if (!stream || AG.$('#empty')) return;
-    const box = el('div', { class: 'empty', id: 'empty', style: { paddingTop: '40px' } });
+    const box = el('div', { class: 'empty', id: 'empty' });
     box.appendChild(el('h2', { text: APP.datasets.length ? 'Conversa limpa. As fontes continuam carregadas.' : 'Pergunte aos seus dados. Sem internet, sem nuvem.' }));
     box.appendChild(el('p', {
       text: APP.datasets.length
@@ -14291,6 +14326,30 @@ const RECEITAS_ARQUIVO = [
       }
       body.appendChild(c.wrap);
     }
+
+    /* Aba de planilha que não virou base: dizer quais e por quê. Carregar seis
+       abas e ver três na tela, sem uma linha explicando as outras, parece
+       perda de dado — e quem não sabe o motivo não tem como consertar a
+       planilha. O parser recolhe; aqui só se conta. */
+    const ignoradas = [];
+    const vistas = new Set();
+    for (const ds of APP.datasets.slice(-n)) {
+      for (const a of ((ds.meta && ds.meta.abasIgnoradas) || [])) {
+        const chave = (ds.meta.source || '') + '|' + a.nome;
+        if (vistas.has(chave)) continue;
+        vistas.add(chave);
+        ignoradas.push(a);
+      }
+    }
+    if (ignoradas.length) {
+      body.appendChild(insightNode(AG.insights.ins('info', '⊘',
+        (ignoradas.length === 1 ? 'Uma aba não virou base: ' : ignoradas.length + ' abas não viraram base: ') +
+        ignoradas.slice(0, 8).map((a) => '<b>' + AG.esc(a.nome) + '</b> (' + AG.esc(a.motivo) + ')').join(', ') +
+        (ignoradas.length > 8 ? ' e mais ' + (ignoradas.length - 8) : '') +
+        '. Nada foi descartado do arquivo original — se alguma dessas deveria ter entrado, ' +
+        'quase sempre é cabeçalho fora da primeira linha útil.')));
+    }
+
     attachTurnControls(turn, { kind: 'fontes' });
     stream.appendChild(turn);
     scrollDown();
@@ -15444,30 +15503,95 @@ const RECEITAS_ARQUIVO = [
   }
 
   /* ---------- drill-down ---------- */
+
+  /**
+   * Clicar numa marca do gráfico tem DUAS leituras legítimas, e o agente não
+   * tem como saber qual é a da vez: descer um nível (categoria → cliente)
+   * responde "de que isso é feito"; listar os registros responde "quais são".
+   * Até a V24 o agente escolhia sozinho a primeira, e a segunda só acontecia
+   * por acidente, quando não sobrava dimensão para descer. Escolher por conta
+   * própria acerta metade das vezes — então a escolha passou a ser sua.
+   *
+   * Quando não há nível abaixo, não há escolha: vai direto para a lista, sem
+   * cobrar um clique numa janela de uma opção só.
+   */
+  function escolheDrill(ds, plan, passo, seguir) {
+    const prox = nextDimension(ds, plan, [passo.column]);
+    if (!prox) { seguir('registros'); return; }
+
+    const n = contaNoRecorte(ds, plan, passo.filter);
+    const body = el('div');
+    body.appendChild(el('div', {
+      class: 'hint', style: { marginBottom: '14px' },
+      html: 'Você clicou em <b>' + AG.esc(String(passo.rotuloCurto || passo.label)) + '</b>' +
+        (n === null ? '' : ' — <b>' + AG.fmtNum(n) + '</b> registro(s) nesse recorte') + '.'
+    }));
+    const escolha = (modo) => { dlg.close(); seguir(modo); };
+    const linha = (titulo, desc, modo, primario) => {
+      const b = el('button', {
+        class: 'btn' + (primario ? ' primary' : '') + ' drill-op',
+        onclick: () => escolha(modo)
+      }, [
+        el('div', { class: 'drill-op-t', text: titulo }),
+        el('div', { class: 'drill-op-d', text: desc })
+      ]);
+      return b;
+    };
+    body.appendChild(el('div', { class: 'drill-ops' }, [
+      linha('Descer para ' + labelOf(ds, prox),
+        'Agrega de novo, um nível abaixo, dentro desse recorte.', 'nivel', true),
+      linha('Listar os registros',
+        (n === null ? 'As linhas' : 'As ' + AG.fmtNum(n) + ' linhas') +
+        ' que formam esse valor, com filtro e ordenação em cada coluna.', 'registros', false)
+    ]));
+    const dlg = modal('Aprofundar', body, null, { largura: 'estreita' });
+  }
+
+  /** Quantas linhas sobram com o recorte da pergunta mais a fatia clicada. */
+  function contaNoRecorte(ds, plan, filtro) {
+    try {
+      const p = {
+        filters: (plan.filters || []).concat([filtro]),
+        timeColumn: plan.timeColumn, timeRange: plan.timeRange
+      };
+      /* O filtro da fatia JÁ é o recorte de tempo quando se clica na série
+         temporal — manter o timeRange antigo por cima devolveria a interseção,
+         que é o próprio período clicado, mas em base cruzada pode zerar. */
+      if (filtro.op === 'between' && filtro.column === plan.timeColumn) p.timeRange = null;
+      return engine.applyFilters(ds, p).length;
+    } catch (e) { return null; }
+  }
+
   function drillDim(ds, plan, d) {
     if (d.key === '__outros__') { toast('“Outros” agrega a cauda — aumente o limite para detalhar.'); return; }
     const dimKey = plan.dimensions[0];
     const rotulo = labelOf(ds, dimKey) + ': ' + d.label;
-    APP.drill.push({
-      dsId: ds.id, column: dimKey, value: d.key, label: rotulo,
+    const passo = {
+      dsId: ds.id, column: dimKey, value: d.key, label: rotulo, rotuloCurto: d.label,
       filter: { dsId: ds.id, column: dimKey, op: '=', value: d.key, label: rotulo }
+    };
+    escolheDrill(ds, plan, passo, (modo) => {
+      APP.drill.push(passo);
+      syncDrillFilters();
+      runDrill(ds, plan, modo);
     });
-    syncDrillFilters();
-    runDrill(ds, plan);
   }
   function drillTime(ds, plan, p) {
     const grain = plan.grain || 'month';
     const from = p.key;
     const to = nextBucket(from, grain) - 1;
     const rotulo = 'Período: ' + p.label;
-    APP.drill = APP.drill.filter((d) => d.column !== plan.timeColumn);
-    APP.drill.push({
-      dsId: ds.id, column: plan.timeColumn, value: p.label, label: rotulo,
+    const passo = {
+      dsId: ds.id, column: plan.timeColumn, value: p.label, label: rotulo, rotuloCurto: p.label,
       filter: { dsId: ds.id, column: plan.timeColumn, op: 'between', value: [from, to], label: rotulo },
       timeRange: { from, to, label: p.label }
+    };
+    escolheDrill(ds, plan, passo, (modo) => {
+      APP.drill = APP.drill.filter((d) => d.column !== plan.timeColumn);
+      APP.drill.push(passo);
+      syncDrillFilters();
+      runDrill(ds, plan, modo);
     });
-    syncDrillFilters();
-    runDrill(ds, plan);
   }
 
   /**
@@ -15477,8 +15601,10 @@ const RECEITAS_ARQUIVO = [
    * de CNPJ; "por Faixa" virava histograma; e o recorte da pergunta original
    * ("em 2024") se perdia porque não estava na frase remontada.
    */
-  function runDrill(ds, plan) {
-    const next = nextDimension(ds, plan);
+  function runDrill(ds, plan, modo) {
+    /* `modo` vem da escolha do clique: 'nivel' desce um agrupamento,
+       'registros' lista as linhas. Sem nível abaixo, os dois caem na lista. */
+    const next = modo === 'registros' ? null : nextDimension(ds, plan);
     const p = JSON.parse(JSON.stringify(plan));
     p.intent = next ? 'ranking' : 'detail';
     p.dimensions = next ? [next] : [];
@@ -15529,8 +15655,12 @@ const RECEITAS_ARQUIVO = [
    * não diz nada a quem está lendo.
    */
   const DOC_RE = /(cnpj|cpf|cnpj\/cpf|documento|inscricao|matricula|protocolo|codigo|cod\b|id\b|chave|nota fiscal|empenho n)/;
-  function nextDimension(ds, plan) {
-    const usedCols = new Set((plan.dimensions || []).concat(APP.drill.map((d) => d.column)));
+  function nextDimension(ds, plan, extras) {
+    /* `extras` é a coluna do passo que ainda NÃO entrou na trilha — a escolha
+       do clique precisa saber se há nível abaixo antes de empurrar o passo,
+       senão a janela ofereceria descer para a própria coluna clicada. */
+    const usedCols = new Set((plan.dimensions || [])
+      .concat(APP.drill.map((d) => d.column)).concat(extras || []));
     const cands = ds.columns.filter((c) =>
       c.role === 'dimension' && !usedCols.has(c.key) && !c.virtual &&
       c.stats.unique >= 2 && c.stats.unique <= 200);
@@ -25596,6 +25726,9 @@ const RECEITAS_ARQUIVO = [
      continua lá, a um clique em "Colunas". */
   const TETO_COLUNAS = 12;
 
+  /* Subtipo do perfilamento → formato que a tabela entende. */
+  const FORMATO = { currency: 'currency', percent: 'percent', geo: 'geo' };
+
   function colunasIniciais(ds) {
     const cols = (ds.columns || []).filter((c) => !c.virtual);
     if (cols.length <= TETO_COLUNAS) return { visiveis: cols, ocultas: [] };
@@ -25627,7 +25760,17 @@ const RECEITAS_ARQUIVO = [
     /* A tabela viva faz o resto: ordenar, filtrar por coluna, buscar,
        escolher colunas, paginar e promover o recorte à análise. */
     const td = {
-      columns: esc.visiveis.map((c) => ({ key: c.key, label: c.label, format: c.format })),
+      /* `role` viaja junto: é o sinal mais confiável de que a coluna é de
+         data, e vem do perfilamento, não de heurística sobre os valores.
+         E o formato vem do SUBTIPO quando a coluna não declara um: o
+         perfilamento grava `subtype: 'currency'`, nunca `format`, então sem
+         essa ponte a lista mostrava 23.725 onde o resto do agente mostra
+         R$ 23.725,32, e 0,08 onde mostra 8%. Número certo, unidade errada,
+         que é a forma mais fácil de ler um valor pelo dobro. */
+      columns: esc.visiveis.map((c) => ({
+        key: c.key, label: c.label, role: c.role,
+        format: c.format || FORMATO[c.subtype] || null
+      })),
       rows: linhas
     };
     const c = charts.card({
