@@ -198,6 +198,21 @@ button { cursor: pointer; }
 .chip.crumb { background: transparent; border-color: var(--border); cursor: pointer; }
 .chip.crumb:hover { border-color: var(--series-1); color: var(--text-primary); }
 
+/* ---------- qual fonte responde ---------- */
+/* Com duas ou mais bases abertas, a escolha da fonte era invisível. Fica no
+   topo, ao lado dos filtros, porque é da mesma família: o que recorta a
+   resposta antes de ela existir. */
+.chip.fonte { cursor: pointer; padding-right: 8px; margin-right: 8px; max-width: 320px; }
+.chip.fonte:hover { border-color: var(--series-1); color: var(--text-primary); }
+.chip.fonte.fixa { border-color: var(--series-1); background: #1d2532; }
+.fonte-rot { color: var(--text-muted); }
+.chip.fonte b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fonte-seta { color: var(--text-muted); font-size: 10px; }
+.fonte-lista { display: grid; gap: 8px; }
+.btn.fonte-op { text-align: left; padding: 10px 13px; line-height: 1.35; }
+.fonte-op-t { font-size: 13px; font-weight: 600; }
+.fonte-op-d { font-size: 11.5px; font-weight: 450; opacity: .8; margin-top: 2px; }
+
 /* ---------- área de conversa ---------- */
 #stream { flex: 1; overflow-y: auto; padding: 22px 26px 8px; scroll-behavior: smooth; }
 .stream-inner { max-width: 1080px; margin: 0 auto; }
@@ -767,6 +782,7 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
   <main id="main">
     <div class="topbar">
       <button class="icon-btn" id="btn-rail" title="Mostrar/ocultar painel">☰</button>
+      <div id="fonte-ativa" style="display:flex;align-items:center"></div>
       <div id="chips" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;overflow:hidden"></div>
       <div class="spacer"></div>
       <button class="btn sm ghost" id="clear-filters" style="display:none">Limpar filtros</button>
@@ -5797,7 +5813,11 @@ const RECEITAS_ARQUIVO = [
     { intent: 'trend', re: /(evolucao|evoluir|ao longo|tendencia|serie historica|historico|por mes|por ano|por dia|por semana|por trimestre|por quinzena|mensal|anual|trimestral|semanal|diaria|diario|variacao no tempo|linha do tempo|trajetoria)/ },
     { intent: 'distribution', re: /(distribuicao|composicao|participacao|share|percentual por|proporcao|reparticao|peso de|fatia|concentracao)/ },
     { intent: 'ranking', re: /(top\s*\d+|maiores|menores|melhores|piores|ranking|rank|principais|maior|menor|classificacao|classificar|ordenar|quem mais|quais mais|lider)/ },
-    { intent: 'detail', re: /(detalh|listar|liste|lista (de|dos|das|completa)|relacao (de|dos|das|completa)|mostrar registros|mostre os (dados|registros)|ver os (dados|registros)|linha a linha|todos os registros|registros da base|amostra|quais sao os registros|abrir|drill|itens|tabela (completa|com os dados|dos dados))/ },
+    /* A listagem é o caminho mais rápido para achar um registro, então vale
+       pelas palavras que as pessoas realmente usam — inclusive o substantivo
+       sozinho ("listagem", "tabela", "registros"), que antes caía em visão
+       geral e devolvia um perfil da fonte no lugar das linhas. */
+    { intent: 'detail', re: /(detalh|listar|liste|listagem|lista (de|dos|das|completa)|relacao (de|dos|das|completa)|mostrar registros|mostre os (dados|registros)|ver os (dados|registros)|linha a linha|todos os registros|registros da base|amostra|quais sao os registros|abrir|drill|itens|tabela (completa|com os dados|dos dados)|^\s*(a |as |os )?(tabela|lista|listagem|relacao|registros|linhas)\s*$|(mostrar|mostre|ver|abrir|exibir) (a )?(tabela|lista|listagem|relacao|base)|listagem (geral|completa))/ },
     { intent: 'compare', re: /(compar|versus| vs |frente a|em relacao a)/ },
     { intent: 'total', re: /(total|soma|somatorio|quanto (foi|e|deu|temos|gastamos|faturamos|custou|custa)|valor total|montante|qual o total|gasto|gastos|gastou|gastaram|despesa|despesas|empenhado|receita|faturamento|volume financeiro)/ }
   ];
@@ -6162,6 +6182,35 @@ const RECEITAS_ARQUIVO = [
     return parcial;
   }
 
+  /* Intenções que só rodam sobre SÉRIE: sem coluna de data a análise não
+     existe, então a base sem data não pode ser escolhida por descarte. */
+  const PRECISA_SERIE = {
+    trend: 1, forecast: 1, anomaly: 1, seasonality: 1, movers: 1, contribution: 1,
+    growth: 1, rfm: 1, cohort: 1, lifecycle: 1, indexed: 1, bridge: 1, changepoint: 1,
+    decompose: 1, fincompara: 1, finsetorial: 1, finrisco: 1, finbeta: 1, finreal: 1
+  };
+
+  /* Telas com formato próprio sabem dizer se uma base serve. O interpretador
+     pergunta, em vez de reimplementar o reconhecimento. */
+  const ESPECIALISTA = {
+    contabil: (ds) => !!(AG.contabil && AG.contabil.detectar && AG.contabil.detectar(ds).ehContabil),
+    capag: (ds) => !!(AG.capag && AG.capag.detectar && AG.capag.detectar(ds).ok),
+    finlamina: (ds) => !!(AG.lamina && AG.lamina.detectar && AG.lamina.detectar(ds).ok)
+  };
+
+  /**
+   * A base do último arquivo carregado — e, dentro dele, a maior aba.
+   * É o padrão quando a frase não dá sinal nenhum de qual fonte usar.
+   */
+  function ultimaCarregada(tables) {
+    if (!tables.length) return null;
+    const ultima = tables[tables.length - 1];
+    const arquivo = (ultima.meta && ultima.meta.source) || null;
+    if (!arquivo) return ultima;
+    const irmas = tables.filter((t) => t.meta && t.meta.source === arquivo);
+    return irmas.sort((a, b) => b.rowCount - a.rowCount)[0] || ultima;
+  }
+
   /* palavras que invertem o filtro de valor que vem logo depois */
   const NEGACAO_RE = /(excluindo|excluir|exceto|menos|fora|sem|tirando|desconsiderando|que nao (seja|sejam|é|e)|diferente de|nao)/;
 
@@ -6346,6 +6395,22 @@ const RECEITAS_ARQUIVO = [
 
     /* resolve n-gramas contra o dicionário */
     const used = new Array(tokens.length).fill(false);
+
+    /* O número do "top N" é GRAMÁTICA, não termo da base. Sem esta marca,
+       "top 10 por valor total" oferecia o token "10" ao dicionário, ele casava
+       com um VALOR de `regiao_imediata_id` de outra base carregada, e o peso
+       desse casamento acidental mudava a FONTE escolhida: a pergunta sobre
+       vendas era respondida sobre municípios. Era esta a causa de "o agente
+       sempre usa a base anterior" com duas ou mais fontes abertas. */
+    for (let i = 0; i < tokens.length; i++) {
+      if (!/^\d{1,3}$/.test(tokens[i])) continue;
+      const antes = tokens[i - 1], depois = tokens[i + 1];
+      if (/^(top|primeiros|ultimos|limite|limitar)$/.test(antes || '') ||
+          /^(maiores|menores|melhores|piores|principais|primeiros|ultimos)$/.test(depois || '')) {
+        used[i] = true;
+      }
+    }
+
     const grams = ngrams(tokens, 4).filter((g) => {
       const t = g.text;
       if (g.n === 1 && (AG.STOPWORDS.has(t) || t.length < 2)) return false;
@@ -6387,7 +6452,16 @@ const RECEITAS_ARQUIVO = [
       for (const mt of matches) {
         for (const c of mt.cands) {
           if (!c.binding.dsId) continue;
-          score.set(c.binding.dsId, (score.get(c.binding.dsId) || 0) + c.score);
+          /* Casar com o NOME de uma coluna é evidência sobre qual base a
+             pergunta trata. Casar com um VALOR dentro de uma coluna é
+             evidência muito mais fraca — "10", "Norte" e "Ativo" existem em
+             meia base do mundo — e valor NUMÉRICO isolado não é evidência
+             nenhuma. Sem esse desconto, um número solto decidia a fonte. */
+          const k = c.binding.kind;
+          let peso = 1;
+          if (k === 'value') peso = /^\d+([.,]\d+)?$/.test(String(mt.gram.text).trim()) ? 0 : 0.4;
+          if (!peso) continue;
+          score.set(c.binding.dsId, (score.get(c.binding.dsId) || 0) + c.score * peso);
         }
       }
       let bestId = null, bestScore = 0;
@@ -6400,7 +6474,32 @@ const RECEITAS_ARQUIVO = [
       }
       ds = tables.find((t) => t.id === bestId) || null;
     }
-    if (!ds && tables.length) ds = tables.slice().sort((a, b) => b.rowCount - a.rowCount)[0];
+    /* Sem nenhum sinal na frase, a base é a do ÚLTIMO ARQUIVO CARREGADO, não a
+       maior. Quem acabou de arrastar um arquivo está perguntando sobre ele; a
+       maior base venceria para sempre, e era por isso que a fonte recém-aberta
+       parecia ser ignorada. Dentro do último arquivo vale a maior aba: uma
+       pasta de trabalho entra com a tabela principal e as de apoio, e "Metas"
+       com 4 linhas não é o que se acabou de abrir para analisar. */
+    if (!ds && tables.length) {
+      /* ...mas a última carregada só entra se a análise PUDER rodar nela.
+         Quem abre o cadastro da CVM ao lado das cotas e pede "meta setorial"
+         está falando das cotas: o cadastro não tem série temporal, e
+         responder por ele seria escolher a base onde a pergunta não cabe. */
+      let elegiveis = tables;
+      if (regraExplicita && PRECISA_SERIE[regraExplicita]) {
+        const comTempo = tables.filter((t) => t.columns.some((c) => c.role === 'time' && !c.virtual));
+        if (comTempo.length) elegiveis = comTempo;
+      }
+      /* O mesmo para as telas de formato próprio: com o CEP consultado ao lado
+         do RREO, "compare receita e despesa" não pode cair na base do CEP só
+         por ser a mais recente. Quem sabe se a base serve é o módulo da tela. */
+      const esp = regraExplicita && ESPECIALISTA[regraExplicita];
+      if (esp) {
+        const cabem = elegiveis.filter((t) => { try { return esp(t); } catch (e) { return false; } });
+        if (cabem.length) elegiveis = cabem;
+      }
+      ds = ultimaCarregada(elegiveis);
+    }
 
     /* A comparação também escolhe a base: quem escreve `UF SIGLA = "CE"` está
        falando da base que TEM essa coluna. Só troca quando a escolhida não
@@ -14623,6 +14722,10 @@ const RECEITAS_ARQUIVO = [
       for (const i of list) c.body.appendChild(insightNode(i));
       if (ds.kind === 'table') {
         c.body.appendChild(el('div', { class: 'btn-row', style: { marginTop: '10px' } }, [
+          /* A listagem com filtros é o caminho mais rápido para achar um
+             registro, e estava escondida atrás de saber a palavra certa.
+             Agora é um botão em toda fonte carregada. */
+          el('button', { class: 'btn sm', text: 'Listar registros', onclick: () => ask('relação de registros de ' + ds.name) }),
           el('button', { class: 'btn sm', text: 'Ver colunas', onclick: () => openSchema(ds) }),
           el('button', { class: 'btn sm', text: 'Visão geral', onclick: () => ask('visão geral de ' + ds.name) })
         ]));
@@ -14753,6 +14856,8 @@ const RECEITAS_ARQUIVO = [
   function renderSources() {
     const box = AG.$('#sources');
     box.innerHTML = '';
+    /* A etiqueta de fonte no topo muda sempre que a lista de fontes muda. */
+    if (AG.renderFonteAtiva) AG.renderFonteAtiva();
     if (!APP.datasets.length) {
       box.appendChild(el('div', { class: 'hint', text: 'Nenhuma fonte carregada ainda.' }));
       return;
@@ -15084,6 +15189,80 @@ const RECEITAS_ARQUIVO = [
   }
 
   /* ---------- chips de filtro e trilha ---------- */
+  /* =========================================================
+     A FONTE DA PERGUNTA, À VISTA E TROCÁVEL
+     =========================================================
+     Com duas ou mais bases abertas, qual delas responde era uma decisão
+     invisível: o agente escolhia pela aderência dos termos e não dizia nada
+     antes de responder. Quando a escolha saía errada — bastava um número
+     solto casar com um valor de outra base — a resposta vinha inteira, com
+     números certos da base errada. A fonte agora fica escrita no topo, e
+     trocá-la é um clique. */
+  function renderFonteAtiva() {
+    const box = AG.$('#fonte-ativa');
+    if (!box) return;
+    box.innerHTML = '';
+    const tables = APP.datasets.filter((d) => d.kind === 'table');
+    if (tables.length < 2) return;      // com uma fonte só não há o que escolher
+    const fixa = tables.find((t) => t.id === APP.activeDsId) || null;
+    const auto = fonteAutomatica(tables);
+    box.appendChild(el('button', {
+      class: 'chip fonte' + (fixa ? ' fixa' : ''),
+      title: fixa
+        ? 'Todas as perguntas vão para esta fonte. Clique para trocar ou voltar ao automático.'
+        : 'O agente escolhe a fonte pela pergunta; sem pista na frase usa esta. Clique para fixar uma.',
+      onclick: abreSeletorFonte
+    }, [
+      el('span', { class: 'fonte-rot', text: fixa ? 'Fonte fixada' : 'Fonte' }),
+      el('b', { text: (fixa || auto) ? (fixa || auto).name : '—' }),
+      el('span', { class: 'fonte-seta', text: '▾' })
+    ]));
+  }
+  /** A que o interpretador usaria se a frase não desse pista nenhuma. */
+  function fonteAutomatica(tables) {
+    if (!tables.length) return null;
+    const ultima = tables[tables.length - 1];
+    const arq = ultima.meta && ultima.meta.source;
+    if (!arq) return ultima;
+    return tables.filter((t) => t.meta && t.meta.source === arq)
+      .sort((a, b) => b.rowCount - a.rowCount)[0] || ultima;
+  }
+  AG.renderFonteAtiva = renderFonteAtiva;
+
+  function abreSeletorFonte() {
+    const tables = APP.datasets.filter((d) => d.kind === 'table');
+    const body = el('div');
+    body.appendChild(el('div', {
+      class: 'hint', style: { marginBottom: '12px' },
+      html: 'Toda pergunta é respondida por <b>uma</b> fonte. No automático, o agente escolhe pelos ' +
+        'termos da frase — "valor total por categoria" vai para a base que tem essas colunas. ' +
+        'Fixar uma fonte manda todas as perguntas para ela, inclusive as genéricas.'
+    }));
+    const auto = fonteAutomatica(tables);
+    const lista = el('div', { class: 'fonte-lista' });
+    const linha = (ds, rotulo, sub, escolhida, onclick) => el('button', {
+      class: 'btn fonte-op' + (escolhida ? ' primary' : ''), onclick: onclick
+    }, [
+      el('div', { class: 'fonte-op-t', text: rotulo }),
+      el('div', { class: 'fonte-op-d', text: sub })
+    ]);
+    lista.appendChild(linha(null, 'Automática — decidir pela pergunta',
+      auto ? 'Sem pista na frase, usa ' + auto.name + ' (a última carregada).' : '',
+      !APP.activeDsId,
+      () => { APP.activeDsId = null; dlg.close(); renderSources(); renderFonteAtiva(); renderSuggestions(); }));
+    for (const t of tables) {
+      lista.appendChild(linha(t, t.name,
+        AG.fmtNum(t.rowCount) + ' linhas · ' + t.columns.length + ' colunas' +
+        (t.derived ? ' · base cruzada' : '') + (t === auto ? ' · última carregada' : ''),
+        APP.activeDsId === t.id,
+        () => { APP.activeDsId = t.id; dlg.close(); renderSources(); renderFonteAtiva(); renderSuggestions(); }));
+    }
+    body.appendChild(lista);
+    const dlg = modal('Qual fonte responde', body, null, { largura: 'estreita' });
+    return dlg;
+  }
+  AG.abreSeletorFonte = abreSeletorFonte;
+
   function renderChips() {
     const box = AG.$('#chips');
     box.innerHTML = '';
@@ -16027,6 +16206,20 @@ const RECEITAS_ARQUIVO = [
       body.appendChild(panel);
       panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
+    /* Com duas ou mais bases abertas, POR QUAL delas a pergunta foi
+       respondida é tão importante quanto o número. Fica escrito no rodapé de
+       toda resposta, e trocar é um clique — antes era preciso ler a subline
+       de cada tela e confiar que ela dizia. */
+    if (plan && plan.dsId && APP.datasets.filter((d) => d.kind === 'table').length > 1) {
+      const dsUsada = APP.datasets.find((d) => d.id === plan.dsId);
+      if (dsUsada) {
+        row.appendChild(el('button', {
+          class: 'fb-btn', title: 'Trocar a fonte que responde às perguntas',
+          text: (APP.activeDsId === dsUsada.id ? '🗃 fonte fixada: ' : '🗃 respondido pela fonte: ') + dsUsada.name,
+          onclick: abreSeletorFonte
+        }));
+      }
+    }
     row.appendChild(up); row.appendChild(down);
     row.appendChild(el('button', { class: 'fb-btn', text: '✎ ensinar', title: 'Definir manualmente a interpretação', onclick: () => {
       const panel = teachPanel(question, plan);
@@ -24047,17 +24240,22 @@ const RECEITAS_ARQUIVO = [
      RENDERIZADOR
      ========================================================= */
   AG.renderers.contabil = function (body, ds, plan, question) {
+    /* Base incompatível não é FALHA da tela, é a resposta — o mesmo princípio
+       que a V15 fixou na varredura de segmentos. O `throw` daqui virava "Falha
+       na análise" com erro no console, indistinguível de defeito, e escondia a
+       informação útil: qual formato esta tela lê e quais bases abertas o têm. */
     const det = C.detectar(ds);
-    if (!det.ehContabil) {
-      throw new Error('esta base não tem o formato conta × valor. Procuro uma coluna que nomeie a conta ' +
-        '(conta, natureza, função, rubrica) e uma de valor. Nos arquivos do SICONFI, FINBRA, RREO e RGF ' +
-        'a "Receita Corrente Líquida" é uma LINHA, não uma coluna — é esse formato que esta tela lê.');
-    }
+    if (!det.ehContabil) return semFormato(body, ds, plan, question);
     const estagios = estagiosDe(ds, det);
     const v = C.visoes(ds, det, { plan: plan, estagios: estagios });
     if (!v.visoes.length) {
-      throw new Error('reconheci ' + v.lista.length + ' contas, mas nenhuma casou com as visões conhecidas. ' +
-        'Use o compositor para montar a sua: qualquer conjunto de contas vira uma visão nomeada.');
+      head(body, 'Nenhuma visão contábil casou', AG.esc(ds.name) + ' · ' + v.lista.length + ' contas reconhecidas');
+      body.appendChild(U().insightNode(AG.insights.ins('warn', '⚠',
+        'Reconheci <b>' + v.lista.length + '</b> contas, mas nenhuma casou com as visões conhecidas ' +
+        '(RREO, RGF, DCA, FINBRA). Use o compositor para montar a sua: qualquer conjunto de contas vira ' +
+        'uma visão nomeada, e ela vale igual no painel e no relatório.')));
+      body.appendChild(U().footRow(question, plan, body));
+      return { headline: 'nenhuma visão casou' };
     }
     const res = C.resultado(v.visoes);
     const nRows = engine.applyFilters(ds, plan).length;
@@ -24331,6 +24529,26 @@ const RECEITAS_ARQUIVO = [
       el('button', { class: 'btn', text: 'Cancelar', onclick: () => d.close() }), salvar
     ]);
     return d;
+  }
+
+  /** A base aberta não está no formato conta × valor: dizer isso, e onde ele está. */
+  function semFormato(body, ds, plan, question) {
+    head(body, 'Esta fonte não está no formato conta × valor', AG.esc(ds.name));
+    body.appendChild(U().insightNode(AG.insights.ins('warn', '⚠',
+      'A tela contábil lê o formato do <b>SICONFI, FINBRA, RREO e RGF</b>: uma coluna que NOMEIA a conta ' +
+      '(conta, natureza, função, rubrica) e uma de valor. Nesses arquivos a "Receita Corrente Líquida" é ' +
+      'uma <b>linha</b>, não uma coluna — é por isso que a tela procura a conta no conteúdo, e não no cabeçalho.')));
+    /* Se outra base aberta TEM o formato, apontar é mais útil que explicar. */
+    const outras = (AG.APP.datasets || []).filter((d) => d.kind === 'table' && d !== ds)
+      .filter((d) => { try { return C.detectar(d).ehContabil; } catch (e) { return false; } });
+    if (outras.length) {
+      body.appendChild(U().insightNode(AG.insights.ins('good', '✓',
+        'Está carregada uma fonte que tem esse formato: ' +
+        outras.map((d) => '<b>' + AG.esc(d.name) + '</b>').join(', ') +
+        '. Fixe-a no seletor de fonte, no topo, ou diga o nome dela na pergunta.')));
+    }
+    body.appendChild(U().footRow(question, plan, body));
+    return { headline: 'fonte fora do formato contábil' };
   }
 
   AG.contabilUI = { abrirCompositor, estagiosDe };
