@@ -5829,11 +5829,22 @@ const RECEITAS_ARQUIVO = [
     { agg: 'median', re: /(mediana|valor mediano|percentil 50|p50)/ },
     { agg: 'distinct', re: /(distint|unicos|unicas|diferentes|nao repetid|sem repetir)/ },
     { agg: 'avg', re: /(\bmedia\b|\bmedio\b|\bmedias\b|\bmedias\b|em media|ticket medio|valor medio)/ },
-    { agg: 'sum', re: /(soma|somar|total|somatorio|acumulado|montante)/ },
+    /* CONTAGEM antes de SOMA, e a ordem aqui é o conserto de um defeito real:
+       a palavra "total" dispara a regra de soma, e ela aparece dentro de
+       NOMES DE COLUNA comuns ("Valor Total"). "quantos por faixa de valor
+       total" virava a SOMA do valor por faixa, em R$, quando a pergunta era
+       quantos registros caem em cada faixa. "quantos" é interrogativo de
+       contagem e não tem outra leitura; "total" é ambíguo por natureza. */
     { agg: 'count', re: /(quantidade de |numero de |quantos|quantas|contagem|total de registros|quantos registros|quantas linhas|numero de linhas|volume de registros)/ },
+    { agg: 'sum', re: /(soma|somar|total|somatorio|acumulado|montante)/ },
     { agg: 'max', re: /(maximo|maior valor|pico|teto)/ },
     { agg: 'min', re: /(minimo|menor valor|piso)/ }
   ];
+
+  /* Agregações cujo resultado é uma CONTAGEM: o número conta ocorrências, não
+     mede a grandeza da coluna, então herdar a unidade dela (R$, %) seria
+     rotular errado. Soma, média, mediana, máximo e mínimo herdam; estas não. */
+  const SEM_UNIDADE = { count: 1, distinct: 1 };
 
   /* intenções que se sustentam só com a fonte, sem casar termo nenhum */
   const SELF_SUFFICIENT = { overview: 1, quality: 1, stats: 1, total: 1, detail: 1, histogram: 1,
@@ -6688,10 +6699,18 @@ const RECEITAS_ARQUIVO = [
     if (agg === 'count') {
       measure = { column: null, label: 'Registros', agg: 'count', format: 'number' };
     } else if (measureCol) {
+      const aggFinal = agg || kb.defaultAgg(measureCol);
       measure = {
         column: measureCol.key, label: measureCol.label,
-        agg: agg || kb.defaultAgg(measureCol),
-        format: measureCol.subtype === 'currency' ? 'currency' : measureCol.subtype === 'percent' ? 'percent' : 'number'
+        agg: aggFinal,
+        /* O formato é da AGREGAÇÃO, não da coluna. Contar quantos valores
+           distintos existem em "Valor Total" devolve 900 VALORES, não
+           R$ 900,00 — a moeda só pertence ao que soma, tira média, pega
+           máximo ou mínimo daquela coluna. Contagem não tem unidade
+           monetária, e rotulá-la em R$ é afirmar um valor que não existe. */
+        format: SEM_UNIDADE[aggFinal] ? 'number'
+          : measureCol.subtype === 'currency' ? 'currency'
+            : measureCol.subtype === 'percent' ? 'percent' : 'number'
       };
     } else if (agg === 'distinct' && dimCols.length) {
       measure = { column: dimCols[0], label: 'Distintos de ' + (colOf(dimCols[0]) || {}).label, agg: 'distinct', format: 'number' };
@@ -26398,8 +26417,24 @@ const RECEITAS_ARQUIVO = [
         if (AG.norm(q).indexOf(AG.norm(u.nome)) >= 0) { uf = u.sigla; break; }
       }
     }
+    /* "por município" é PEDIDO DE AGRUPAMENTO, não nome de ente — a mesma
+       palavra "por" que o resto do agente trata como conector. Sem isto o
+       agente respondia «não achei o município "por município"», que é a pior
+       forma de errar: parece dado faltando quando a pergunta foi lida errado.
+       O trecho sai da frase antes de sobrar o nome. */
+    let agrupar = null;
+    let qq = q;
+    const rPor = /\bpor\s+(munic[íi]pios?|cidades?|entes?|uf|ufs|estados?|nota|notas)\b/i;
+    const mp = rPor.exec(qq);
+    if (mp) {
+      const alvoGrupo = AG.norm(mp[1]);
+      agrupar = /^(uf|ufs|estados?)$/.test(alvoGrupo) ? 'uf'
+        : /^notas?$/.test(alvoGrupo) ? 'nota' : 'municipio';
+      qq = qq.replace(rPor, ' ');
+    }
+
     /* O município: o trecho depois de "de/do/da/em", tirando a UF. */
-    const lim = /(?:capag|capacidade de pagamento|nota)\s+(?:d[oae]s?\s+|em\s+|para\s+)?(?:(?:munic[íi]pio|cidade|ente)\s+(?:d[oae]\s+)?)?(.+)$/i.exec(q.trim());
+    const lim = /(?:capag|capacidade de pagamento|nota)\s+(?:d[oae]s?\s+|em\s+|para\s+)?(?:(?:munic[íi]pio|cidade|ente)\s+(?:d[oae]\s+)?)?(.+)$/i.exec(qq.trim());
     let termo = lim ? lim[1] : '';
     termo = termo.replace(/[?.!,;]+$/, '').trim();
     if (uf) {
@@ -26424,18 +26459,23 @@ const RECEITAS_ARQUIVO = [
         }
       }
     }
-    return { termo: termo, uf: uf };
+    return { termo: termo, uf: uf, agrupar: agrupar };
   }
 
   AG.renderers.capag = function (body, ds, plan, question) {
-    const bases = CP.basesCapag(AG.APP.datasets);
+    const bases = ordenaBases(CP.basesCapag(AG.APP.datasets), ds);
     if (!bases.length) return semBase(body, ds, question, plan);
 
     const alvo = alvoDaPergunta(question, plan);
-    if (!alvo.termo && !alvo.uf) return semAlvo(body, ds, bases, question, plan);
 
-    /* UF sem município: a pergunta é sobre o estado inteiro. */
-    if (!alvo.termo && alvo.uf) return porUF(body, ds, bases, alvo.uf, question, plan);
+    /* Agrupar por UF é outra pergunta: quantos municípios de cada nota em
+       cada estado. Vem antes do caminho de município. */
+    if (alvo.agrupar === 'uf' && !alvo.termo) return porGrupoUF(body, ds, bases, alvo.uf, question, plan);
+
+    /* "capag por município", "capag" sozinho, "capag dos municípios do CE":
+       todos pedem a MESMA coisa — a relação, com filtro em cada coluna. A UF,
+       quando dita, é só o recorte. */
+    if (!alvo.termo) return porUF(body, ds, bases, alvo.uf, question, plan);
 
     const res = CP.resolverMunicipio(alvo.termo, alvo.uf);
     if (res.erro) return naoAchou(body, ds, bases, alvo, res, question, plan);
@@ -26602,48 +26642,142 @@ const RECEITAS_ARQUIVO = [
   /* =========================================================
      A UF INTEIRA
      ========================================================= */
+  /**
+   * A relação de municípios com a nota — com recorte de UF ou sem nenhum.
+   * `uf` nulo é a planilha inteira, que é o que "capag por município" pede.
+   */
   function porUF(body, ds, bases, uf, question, plan) {
     const b = bases[0];
+    const linhas = linhasDaPlanilha(b, uf);
+    if (!linhas.length) {
+      if (uf) return naoAchou(body, ds, bases, { termo: uf, uf: uf },
+        { erro: 'nenhum município de ' + uf + ' na planilha carregada' }, question, plan);
+      return semAlvo(body, ds, bases, question, plan);
+    }
+
+    linhas.sort((a, b2) => String(a.nota).localeCompare(String(b2.nota)) || a.municipio.localeCompare(b2.municipio, 'pt-BR'));
+    const ufs = new Set(linhas.map((l) => l.uf).filter(Boolean));
+    head(body, uf ? 'CAPAG dos municípios de ' + uf : 'CAPAG por município',
+      AG.fmtNum(linhas.length) + ' municípios' + (uf ? '' : ' em ' + ufs.size + ' UF') +
+      (b.det.posicao ? ' · posição <b>' + AG.esc(b.det.posicao.rot) + '</b>' : '') +
+      ' · fonte <b>' + AG.esc(b.ds.name) + '</b>');
+
+    const cont = {};
+    for (const l of linhas) cont[l.nota[0]] = (cont[l.nota[0]] || 0) + 1;
+    body.appendChild(el('div', { class: 'kpis' },
+      ['A', 'B', 'C', 'D'].filter((n) => cont[n]).map((n) =>
+        U().kpi('Nota ' + n, AG.fmtNum(cont[n]), AG.fmtPct(cont[n] / linhas.length, 0) + ' dos municípios'))));
+
+    const cols = [{ key: 'municipio', label: 'Município' }];
+    if (!uf) cols.push({ key: 'uf', label: 'UF' });
+    cols.push({ key: 'nota', label: 'Nota CAPAG' }, { key: 'endiv', label: 'Endividamento' },
+      { key: 'poupanca', label: 'Poupança corrente' }, { key: 'liquidez', label: 'Liquidez' });
+    const c = charts.card({
+      title: uf ? 'Todos os municípios de ' + uf : 'Todos os municípios da planilha',
+      subtitle: 'ordene clicando no cabeçalho · filtre por nota ou UF em ⛃ Filtros · busque o município no campo acima',
+      tools: false, onExport: false
+    });
+    c.body.appendChild(charts.dataTable({ columns: cols, rows: linhas }, { titulo: 'capag-' + (uf || 'todos') }));
+    body.appendChild(c.wrap);
+    if (!uf) {
+      body.appendChild(U().insightNode(ins('info', 'ⓘ',
+        'Para um município só: <code>CAPAG de Fortaleza</code>. Para um estado: ' +
+        '<code>CAPAG dos municípios do Ceará</code>. Para o resumo por estado: <code>CAPAG por UF</code>.')));
+    }
+    foot(body, question, plan, b.ds, linhas.length);
+    return { headline: linhas.length + ' municípios com CAPAG' };
+  }
+
+  /** Uma linha por município da planilha, com a UF resolvida pelo cadastro. */
+  function linhasDaPlanilha(b, uf) {
     const det = b.det, notaCol = det.conceitos.nota.col.key;
     const linhas = [];
     for (const r of b.ds.rows) {
       let m = null;
       if (det.ibgeCol) m = AG.municipios.porCodigo(String(r[det.ibgeCol.key]).replace(/\D/g, ''));
       const u = m ? m.uf : (det.conceitos.uf ? String(r[det.conceitos.uf.col.key] || '').toUpperCase().trim() : null);
-      if (u !== uf) continue;
+      if (uf && u !== uf) continue;
       const nota = String(r[notaCol] === null || r[notaCol] === undefined ? '' : r[notaCol]).trim().toUpperCase();
       linhas.push({
         municipio: m ? m.nome : (det.conceitos.ente ? String(r[det.conceitos.ente.col.key] || '') : '—'),
-        codigo: m ? m.codigo : null, nota: nota || '—',
+        uf: u || '—', codigo: m ? m.codigo : null, nota: nota || '—',
         endiv: (CP.campo(det, r, 'endiv') || {}).valor, poupanca: (CP.campo(det, r, 'poupanca') || {}).valor,
         liquidez: (CP.campo(det, r, 'liquidez') || {}).valor
       });
     }
-    if (!linhas.length) return naoAchou(body, ds, bases, { termo: uf, uf: uf },
-      { erro: 'nenhum município de ' + uf + ' na planilha carregada' }, question, plan);
+    return linhas;
+  }
 
-    linhas.sort((a, b2) => String(a.nota).localeCompare(String(b2.nota)) || a.municipio.localeCompare(b2.municipio, 'pt-BR'));
-    head(body, 'CAPAG dos municípios de ' + uf,
-      linhas.length + ' municípios' + (b.det.posicao ? ' · posição <b>' + AG.esc(b.det.posicao.rot) + '</b>' : ''));
+  /**
+   * "CAPAG por UF": quantos municípios de cada nota em cada estado. É outra
+   * pergunta que a mesma planilha responde — e a que mostra onde o problema
+   * está concentrado.
+   */
+  function porGrupoUF(body, ds, bases, ufFiltro, question, plan) {
+    const b = bases[0];
+    const linhas = linhasDaPlanilha(b, ufFiltro);
+    if (!linhas.length) return semAlvo(body, ds, bases, question, plan);
 
-    const cont = {};
-    for (const l of linhas) cont[l.nota[0]] = (cont[l.nota[0]] || 0) + 1;
-    body.appendChild(el('div', { class: 'kpis' },
-      ['A', 'B', 'C', 'D'].filter((n) => cont[n]).map((n) =>
-        U().kpi('Nota ' + n, String(cont[n]), AG.fmtPct(cont[n] / linhas.length, 0) + ' dos municípios'))));
+    const porU = new Map();
+    for (const l of linhas) {
+      const u = l.uf || '—';
+      let o = porU.get(u);
+      if (!o) { o = { uf: u, municipios: 0, A: 0, B: 0, C: 0, D: 0 }; porU.set(u, o); }
+      o.municipios++;
+      const n = String(l.nota)[0];
+      if (o[n] !== undefined) o[n]++;
+    }
+    const linhasUF = Array.from(porU.values());
+    /* Ordena pelo que interessa a quem pergunta: onde a nota é pior. */
+    for (const o of linhasUF) o.fraca = Math.round(((o.C + o.D) / o.municipios) * 1e4) / 1e4;
+    linhasUF.sort((x, y) => y.fraca - x.fraca || y.municipios - x.municipios);
 
-    const cols = [{ key: 'municipio', label: 'Município' }, { key: 'nota', label: 'Nota CAPAG' },
-      { key: 'endiv', label: 'Endividamento' }, { key: 'poupanca', label: 'Poupança corrente' },
-      { key: 'liquidez', label: 'Liquidez' }];
+    head(body, 'CAPAG por UF',
+      linhasUF.length + ' UF · ' + AG.fmtNum(linhas.length) + ' municípios' +
+      (b.det.posicao ? ' · posição <b>' + AG.esc(b.det.posicao.rot) + '</b>' : ''));
+
+    const pior = linhasUF[0];
+    body.appendChild(el('div', { class: 'kpis' }, [
+      U().kpi('UF com mais nota fraca', pior.uf, AG.fmtPct(pior.fraca, 0) + ' em C ou D'),
+      U().kpi('Municípios A ou B', AG.fmtNum(linhas.filter((l) => /^[AB]/.test(l.nota)).length),
+        'podem contratar com garantia da União'),
+      U().kpi('Municípios C ou D', AG.fmtNum(linhas.filter((l) => /^[CD]/.test(l.nota)).length),
+        'não podem')
+    ]));
+
+    body.appendChild(charts.barsH({
+      width: 900, measureLabel: '% em C ou D', format: 'percent',
+      data: linhasUF.slice(0, 20).map((o) => ({ label: o.uf, value: o.fraca, color: cor(o.fraca >= 0.5 ? 'C' : 'B') }))
+    }));
+
     const c = charts.card({
-      title: 'Todos os municípios de ' + uf,
-      subtitle: 'ordene clicando no cabeçalho · filtre por nota em ⛃ Filtros',
+      title: 'Distribuição das notas por UF',
+      subtitle: 'ordene clicando no cabeçalho · a última coluna é a fatia em C ou D',
       tools: false, onExport: false
     });
-    c.body.appendChild(charts.dataTable({ columns: cols, rows: linhas }, { titulo: 'capag-' + uf }));
+    c.body.appendChild(charts.dataTable({
+      columns: [{ key: 'uf', label: 'UF' }, { key: 'municipios', label: 'Municípios' },
+        { key: 'A', label: 'A' }, { key: 'B', label: 'B' }, { key: 'C', label: 'C' }, { key: 'D', label: 'D' },
+        { key: 'fraca', label: '% em C ou D', format: 'percent' }],
+      rows: linhasUF
+    }, { titulo: 'capag-por-uf' }));
     body.appendChild(c.wrap);
     foot(body, question, plan, b.ds, linhas.length);
-    return { headline: linhas.length + ' municípios de ' + uf + ' com CAPAG' };
+    return { headline: linhasUF.length + ' UF com CAPAG' };
+  }
+
+  /**
+   * A fonte que o usuário escolheu vem primeiro. Sem isto, cruzar a planilha
+   * da CAPAG com o cadastro de municípios e fixar a base cruzada não mudava
+   * nada: `basesCapag` ordena por data de posição, e a base cruzada — cujo
+   * nome não carrega a data — caía para o fim da fila.
+   */
+  function ordenaBases(bases, ds) {
+    const alvo = (AG.APP && AG.APP.activeDsId) || (ds && ds.id) || null;
+    if (!alvo) return bases;
+    const i = bases.findIndex((b) => b.ds.id === alvo);
+    if (i <= 0) return bases;
+    return [bases[i]].concat(bases.slice(0, i), bases.slice(i + 1));
   }
 
   /* =========================================================
@@ -26746,7 +26880,7 @@ const RECEITAS_ARQUIVO = [
     body.appendChild(U().footRow(question, plan, body));
   }
 
-  AG.capagUI = { alvoDaPergunta, SENTIDO };
+  AG.capagUI = { alvoDaPergunta, SENTIDO, linhasDaPlanilha, ordenaBases };
 })();
 
 </script>
