@@ -259,6 +259,17 @@ button { cursor: pointer; }
 .selo-key   { border-color: rgba(250,178,25,.5); color: var(--warning); }
 .selo-file  { border-color: var(--border-strong); }
 .selo-naoaud { border-color: rgba(144,133,233,.55); color: #b3aaf2; }
+/* Procedência. O selo de acesso é contorno; este é FUNDO, porque não é
+   ressalva miúda: é o que separa o dado do órgão do dado republicado. */
+/* `oficial` não ganha classe porque não ganha selo: o padrão em 107 de 108
+   cartões informa nada e só gasta a atenção que o selo da exceção precisa. */
+.selo-naooficial {
+  background: rgba(250,178,25,.14); border-color: rgba(250,178,25,.55); color: var(--warning);
+}
+.selo-usuario {
+  background: rgba(144,133,233,.16); border-color: rgba(144,133,233,.6); color: #c3bcf6;
+}
+.fonte-cab .selo + .selo { margin-left: 5px; }
 .url-montada {
   display: block; font-family: var(--mono); font-size: 11.5px; word-break: break-all;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
@@ -683,6 +694,22 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
 /* --- consulta parametrizada: cada campo diz de onde veio --- */
 .params-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .params-grid .fld > span:first-child { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+/* --- cadastro de fonte (módulo 101) --- */
+.fn-wrap > * + * { margin-top: 10px; }
+.fn-linha-url { display: flex; gap: 8px; align-items: center; }
+.fn-linha-url .inp { flex: 1 1 auto; min-width: 0; }
+.fn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.fn-campo { min-width: 0; }
+.fn-rot { display: block; font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
+.fn-campo .inp { width: 100%; box-sizing: border-box; }
+.fn-param { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.fn-param .inp { flex: 1 1 160px; min-width: 0; }
+.fn-param-n {
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-secondary);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 7px; white-space: nowrap;
+}
+@media (max-width: 560px) { .fn-linha-url { flex-wrap: wrap; } }
 .marca.org-frase { background: #16391f; color: #7ee2a0; border-color: #235c33; }
 .marca.org-herdado { background: #3a3117; color: #e8c471; border-color: #5c4c23; }
 .marca.org-padrao { background: #23262d; color: #8b93a3; border-color: #333844; }
@@ -722,8 +749,8 @@ input.inp:focus, select.inp:focus, textarea.inp:focus { border-color: var(--seri
           <button class="btn sm" id="btn-fontes">🌐 Fontes públicas</button>
           <button class="btn sm ghost" id="btn-demo">Dados de demonstração</button>
         </div>
-        <div class="hint" style="margin-top:6px">
-          101 fontes públicas catalogadas. A busca é local; só há acesso à rede quando você manda buscar uma fonte.
+        <div class="hint" style="margin-top:6px" id="fontes-hint">
+          A busca é local; só há acesso à rede quando você manda buscar uma fonte.
         </div>
       </div>
 
@@ -4395,6 +4422,40 @@ const FONTES = [
   doc:"https://dadosabertos.tse.jus.br/dataset/codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge",
   chave:["tse","ibge","codigo","de para","depara","municipio","conversao","eleicao","chave"] },
 {
+  /* A PRIMEIRA FONTE NÃO OFICIAL DO CATÁLOGO, e a razão pela qual o eixo de
+     procedência passou a existir.
+
+     Ela faz, num arquivo só, o que as duas entradas acima exigem em quatro
+     chamadas por município mais a ponte de código: prefeito eleito, partido,
+     votos e bens, já chaveados pelo código do IBGE — que é a chave de todo o
+     resto do agente. Para quem quer "capag por prefeito" ou "partido por
+     situação fiscal", isto é a diferença entre uma pergunta e um projeto.
+
+     E não é o TSE. O dado é do TSE e do IBGE; o arquivo é de terceiro, pode
+     estar defasado, recortado ou transformado, e nada disso aparece no
+     número. Por isso entra com `oficial:false`: o selo é o que diz, em toda
+     tela onde ela apareça, que a origem é uma e o arquivo é outro.
+
+     Os metadados abaixo foram lidos do próprio arquivo em 06/10/2026. CORS
+     NÃO foi testado — o ambiente de onde este catálogo é montado não alcança
+     o host. O primeiro "Testar agora" seu é a auditoria, como em toda fonte
+     que entrou sem teste. */
+  id:"briefing-prefeitos", nome:"Prefeitos eleitos por município — TSE + IBGE consolidados",
+  org:"Briefing Municipal — EDP Sistemas", dom:"normas", acesso:"naoaud",
+  gran:"municipio", peso:72, oficial:false,
+  equivale:"tse-candidaturas",
+  desc:"Um JSON com os 5.570 municípios e o prefeito eleito de cada um — nome, partido, votos, bens declarados, foto — já com o código do IBGE, população e IDHM na mesma linha. É a consolidação pronta do que o DivulgaCandContas só devolve município a município, e com o código do TSE.",
+  base:"https://briefing-gold-eta.vercel.app/data/prefeitos/todos.json",
+  params:[], formato:"JSON (envelope com `registros`)",
+  periodicidade:"Regerado pelo publicador; o próprio arquivo declara `gerado_em`",
+  cobertura:"Brasil — 5.570 municípios, 5.552 com prefeito identificado no TSE",
+  origemDeclarada:"TSE (dados abertos) + IBGE; consolidado por Briefing Municipal — EDP Sistemas",
+  licenca:"Dados públicos do TSE e do IBGE (CC BY). Cite as fontes.",
+  auditoria:"CORS NÃO auditado: o host não é alcançável do ambiente onde o catálogo é montado. O conteúdo foi lido em 06/10/2026 e o envelope declara-se: `gerado_em`, `idade_referencia`, `fonte`, `licenca`, `total` 5571 e `com_prefeito_tse` 5552 — ou seja, 19 municípios sem prefeito identificado, e esse vazio é dado, não erro. Os registros vêm em `registros`, ~50 campos por linha, com `codigo_ibge` de 7 dígitos pronto para cruzar. DUAS RESSALVAS. (1) É republicação: o agente não compara estes números com o TSE e não deve ser citado como se fosse o TSE — para citar, confira na origem. (2) Campos derivados de data (idade, por exemplo) envelhecem contra o `idade_referencia` do arquivo, não contra hoje.",
+  doc:"https://briefing-gold-eta.vercel.app/",
+  chave:["prefeito","prefeitos","prefeita","eleito","partido","votos","briefing","mandato",
+         "bens declarados","idhm","populacao","municipio","tse","consolidado"] },
+{
   /* Das pouquíssimas APIs grandes que liberam CORS de propósito: a Wikimedia
      documenta `origin=*` para chamada anônima. Num agente que roda no
      navegador do usuário, isso é raro o bastante para valer a entrada. */
@@ -4946,7 +5007,44 @@ const RECEITAS_ARQUIVO = [
     alternativa:"Sem histórico exportável, uma planilha com data e valor total da carteira já responde retorno, volatilidade e drawdown." }
 ];
 
-  AG.fontes = { AUDIT_DATE, FONTES, RECEITAS, RECEITAS_ARQUIVO, DOMINIOS, ACESSOS, GRANS };
+/* =========================================================
+   PROCEDÊNCIA — EIXO SEPARADO DO ACESSO
+
+   `acesso` responde "dá para puxar daqui?". Procedência responde outra
+   pergunta, que até agora o catálogo não precisava fazer porque a resposta
+   era sempre a mesma: "quem publicou este arquivo?". Com fonte republicada
+   por terceiro e fonte cadastrada pelo usuário no mesmo catálogo, as duas
+   perguntas se separam — um JSON do TSE republicado no Vercel responde ao
+   navegador melhor que o portal do próprio TSE, e continua não sendo o TSE.
+
+   O padrão é OFICIAL e só a exceção se declara (`oficial:false`). Marcar as
+   107 entradas uma por uma seria escrever 107 vezes o mesmo dado, e a
+   primeira fonte nova esquecida entraria como oficial sem ninguém notar.
+   Aqui o esquecimento cai para o lado seguro: `doUsuario` sempre vence.
+   ========================================================= */
+  const PROCEDENCIAS = {
+    oficial: {
+      rot: "Fonte oficial", curto: "Oficial", cls: "selo-oficial",
+      dica: "Publicada pelo órgão responsável pelo dado."
+    },
+    naooficial: {
+      rot: "Pública, não oficial", curto: "Não oficial", cls: "selo-naooficial",
+      dica: "Dado público republicado por terceiro. A origem é oficial; este arquivo não é — " +
+        "pode estar defasado, recortado ou transformado em relação ao original."
+    },
+    usuario: {
+      rot: "Adicionada por você", curto: "Sua fonte", cls: "selo-usuario",
+      dica: "Você cadastrou este endereço. O agente não auditou a procedência, não testou o " +
+        "acesso e não compara os números com a origem."
+    }
+  };
+  const ehOficial = (f) => !!f && !f.doUsuario && f.oficial !== false;
+  const procedenciaDe = (f) => (!f ? "oficial" : f.doUsuario ? "usuario" : (f.oficial === false ? "naooficial" : "oficial"));
+
+  AG.fontes = {
+    AUDIT_DATE, FONTES, RECEITAS, RECEITAS_ARQUIVO, DOMINIOS, ACESSOS, GRANS,
+    PROCEDENCIAS, ehOficial, procedenciaDe
+  };
 })();
 
 
@@ -5087,6 +5185,7 @@ const RECEITAS_ARQUIVO = [
     feedback: {},     // assinatura -> {up, down}
     unresolved: [],   // perguntas que falharam, aguardando ensino
     auditorias: {},   // id da fonte -> resultado do último teste feito pelo usuário
+    fontesUsuario: [], // fontes cadastradas pelo usuário (módulo 41)
     updatedAt: null
   };
   AG.KB = KB;
@@ -5142,11 +5241,27 @@ const RECEITAS_ARQUIVO = [
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { idbSet('kb', serialize()); }, 400);
   }
+  /* Rede de segurança de um ponto só. serialize() alimenta o IndexedDB E o
+     arquivo de conhecimento exportado — é por aqui que um segredo sairia da
+     máquina. O módulo 41 já grava a ficha com o valor da credencial vazio;
+     aqui ele é apagado de novo, para que nenhum caminho futuro de escrita
+     possa vazar o que a regra de lá proíbe. */
+  function semCredencial(lista) {
+    const re = (AG.fontesUsuario && AG.fontesUsuario.CRED_RE) ||
+      /(api[_-]?key|apikey|chave|token|secret|senha|password|passwd|pwd|auth|bearer)/i;
+    return (lista || []).map((f) => Object.assign({}, f, {
+      /* `n` é o nome do parâmetro na forma do catálogo (módulo 35, helper P). */
+      params: (f.params || []).map((p) =>
+        re.test(String(p.n || p.nome || '')) ? Object.assign({}, p, { v: '', exemplo: '' }) : p)
+    }));
+  }
+
   function serialize() {
     return JSON.parse(JSON.stringify({
       version: KB.version, terms: KB.terms, metrics: KB.metrics,
       patterns: KB.patterns, feedback: KB.feedback,
       auditorias: KB.auditorias || {},
+      fontesUsuario: semCredencial(KB.fontesUsuario),
       unresolved: KB.unresolved.slice(-80), updatedAt: KB.updatedAt
     }));
   }
@@ -5177,6 +5292,7 @@ const RECEITAS_ARQUIVO = [
       KB.metrics = saved.metrics || {};
       KB.patterns = saved.patterns || {};
       KB.auditorias = saved.auditorias || {};
+      KB.fontesUsuario = semCredencial(saved.fontesUsuario);
       KB.feedback = saved.feedback || {};
       KB.unresolved = saved.unresolved || [];
       KB.updatedAt = saved.updatedAt || null;
@@ -5186,7 +5302,10 @@ const RECEITAS_ARQUIVO = [
   }
   function importKB(obj, mode) {
     if (!obj || typeof obj !== 'object') throw new Error('Arquivo de conhecimento inválido');
-    if (mode === 'replace') { KB.terms = {}; KB.metrics = {}; KB.patterns = {}; KB.feedback = {}; }
+    if (mode === 'replace') {
+      KB.terms = {}; KB.metrics = {}; KB.patterns = {}; KB.feedback = {};
+      KB.fontesUsuario = [];
+    }
     for (const t in (obj.terms || {})) {
       const incoming = obj.terms[t] || [];
       const cur = KB.terms[t] || (KB.terms[t] = []);
@@ -5202,6 +5321,24 @@ const RECEITAS_ARQUIVO = [
       const f = KB.feedback[k] || (KB.feedback[k] = { up: 0, down: 0 });
       f.up += (obj.feedback[k].up || 0); f.down += (obj.feedback[k].down || 0);
     }
+    /* Fontes do usuário: a chave é o `id`, e o arquivo importado substitui a
+       ficha de mesmo id (quem exportou é quem mexeu nela por último). O valor
+       da credencial é descartado na entrada também — arquivo de fora não tem
+       autoridade para plantar segredo na máquina de ninguém. */
+    const fu = semCredencial(Array.isArray(obj.fontesUsuario) ? obj.fontesUsuario : []);
+    if (fu.length) {
+      KB.fontesUsuario = KB.fontesUsuario || [];
+      for (const f of fu) {
+        if (!f || !f.id || !f.base) continue;
+        const ficha = (AG.fontesUsuario && AG.fontesUsuario.normalizaFicha)
+          ? AG.fontesUsuario.normalizaFicha(f) : f;
+        const i = KB.fontesUsuario.findIndex((x) => x.id === ficha.id);
+        if (i >= 0) KB.fontesUsuario[i] = ficha; else KB.fontesUsuario.push(ficha);
+      }
+    }
+    /* Fora do `if`: importar em modo "substituir" uma base sem fontes também
+       precisa limpar o catálogo, senão a fonte removida continua na tela. */
+    if (AG.fontesUsuario && AG.fontesUsuario.sincronizar) AG.fontesUsuario.sincronizar();
     persist();
     return true;
   }
@@ -5472,6 +5609,224 @@ const RECEITAS_ARQUIVO = [
   };
 })();
 
+
+/* ==== 41-fontes-usuario.js ==== */
+/* ============================================================
+   41 — FONTES ADICIONADAS POR VOCÊ
+
+   As 107 fontes do catálogo foram escritas à mão, uma a uma. Isso não escala:
+   cada prefeitura tem TCE estadual, portal próprio e diário municipal, e
+   esperar uma versão nova do agente para cada fonte nova é o mesmo que não
+   ter a fonte.
+
+   Este módulo deixa o usuário registrar a fonte dele. O caminho é colar a URL
+   e deixar o agente descobrir o resto: ele separa a base dos parâmetros, lê a
+   forma da resposta (módulo 28) e os metadados que o próprio arquivo declarar
+   — `gerado_em`, `fonte`, `licenca` — e devolve uma ficha pré-preenchida para
+   conferência. Preencher formulário de dez campos é trabalho; conferir o que
+   a máquina leu é revisão.
+
+   DUAS REGRAS QUE NÃO SE NEGOCIAM
+
+   1. CREDENCIAL NUNCA É PERSISTIDA. Uma URL com `api_key=`, `token=` ou
+      `password=` guardaria o segredo no IndexedDB e, pior, no arquivo de
+      conhecimento exportado — que é feito para ser mandado a outra máquina.
+      O parâmetro entra na ficha VAZIO, marcado como "falta você preencher",
+      e é digitado na hora do uso. É a mesma regra da V15, aplicada ao caminho
+      novo: um segredo colado num HTML que roda na máquina do usuário é um
+      segredo vazado.
+
+   2. FONTE SUA É FONTE NÃO AUDITADA, E ISSO FICA ESCRITO. Eu não testei o
+      endereço, não conferi a procedência e não comparo os números com a
+      origem. O selo diz isso na ficha, no cartão e na lista — não como
+      ressalva miúda, mas como a informação que separa o dado oficial do
+      republicado.
+   ============================================================ */
+'use strict';
+
+(function () {
+  const kb = () => AG.kb;
+
+  /* Parâmetro que cheira a credencial. Generoso de propósito: um falso
+     positivo custa um campo a preencher na hora; um falso negativo custa um
+     segredo gravado em disco e exportado. */
+  const CRED_RE = /(api[_-]?key|apikey|chave|token|secret|senha|password|passwd|pwd|auth|bearer|access[_-]?key|client[_-]?secret|signature|assinatura)/i;
+
+  /* Metadados que uma republicação bem-feita declara sobre si mesma. Ler o
+     que o arquivo diz vale mais que o que a ficha afirma: a ficha envelhece
+     parada, o arquivo se atualiza junto com o dado. */
+  const META_GERADO = ['gerado_em', 'generated_at', 'updated_at', 'atualizado_em', 'data_geracao',
+    'last_updated', 'lastModified', 'timestamp', 'data_atualizacao'];
+  const META_FONTE = ['fonte', 'source', 'fontes', 'origem', 'provider'];
+  const META_LICENCA = ['licenca', 'licença', 'license', 'licensing', 'direitos'];
+  const META_TOTAL = ['total', 'count', 'total_registros', 'totalRegistros', 'numero_registros'];
+
+  function primeiroCampo(obj, nomes) {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const n of nomes) {
+      for (const k in obj) {
+        if (AG.norm(k) === AG.norm(n)) {
+          const v = obj[k];
+          if (v === null || v === undefined || v === '') continue;
+          if (typeof v === 'object') continue;
+          return { campo: k, valor: v };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** O que a resposta declara sobre si: geração, origem, licença e contagem. */
+  function lerMetadados(json) {
+    const out = { gerado: null, fonte: null, licenca: null, total: null, campos: [] };
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return out;
+    const g = primeiroCampo(json, META_GERADO);
+    const f = primeiroCampo(json, META_FONTE);
+    const l = primeiroCampo(json, META_LICENCA);
+    const t = primeiroCampo(json, META_TOTAL);
+    if (g) { out.gerado = String(g.valor); out.campos.push(g.campo); }
+    if (f) { out.fonte = String(f.valor); out.campos.push(f.campo); }
+    if (l) { out.licenca = String(l.valor); out.campos.push(l.campo); }
+    if (t && isFinite(Number(t.valor))) { out.total = Number(t.valor); out.campos.push(t.campo); }
+    return out;
+  }
+
+  /* =========================================================
+     DA URL PARA A FICHA
+     ========================================================= */
+  /**
+   * Separa a URL colada em base + parâmetros e propõe uma ficha.
+   * Não vai à rede: isto é leitura de texto. A rede só entra quando o usuário
+   * manda testar, e aí o resultado enriquece o rascunho.
+   */
+  function descobrir(urlBruta) {
+    const texto = String(urlBruta || '').trim();
+    if (!texto) return { erro: 'Cole o endereço da fonte.' };
+    let u;
+    try { u = new URL(texto); } catch (e) { return { erro: 'Esse texto não é um endereço válido. Comece com https://' }; }
+    if (!/^https?:$/.test(u.protocol)) return { erro: 'Só endereço http ou https.' };
+
+    /* A forma do parâmetro é a MESMA do catálogo — `{n, v, req, hint}`, do
+       helper P() do módulo 35. Inventar `{nome, exemplo}` aqui faria
+       montarURL() ignorar o parâmetro e a ficha mostrá-lo em branco, sem
+       erro em lugar nenhum: a fonte do usuário teria metade dos recursos
+       das outras e ninguém saberia por quê. */
+    const params = [], credenciais = [];
+    u.searchParams.forEach((valor, nome) => {
+      if (CRED_RE.test(nome)) {
+        credenciais.push(nome);
+        params.push({
+          n: nome, v: '', req: true, credencial: true,
+          hint: 'credencial — digitada na hora do uso, nunca guardada'
+        });
+      } else {
+        params.push({ n: nome, v: valor, req: false, hint: '' });
+      }
+    });
+
+    const base = u.origin + u.pathname;
+    const arquivo = (u.pathname.split('/').filter(Boolean).pop() || '').replace(/\.[a-z0-9]+$/i, '');
+    const host = u.hostname.replace(/^www\./, '');
+    const formato = /\.csv$/i.test(u.pathname) ? 'csv'
+      : /\.json$/i.test(u.pathname) ? 'json'
+        : /\.(xlsx|xls)$/i.test(u.pathname) ? 'xlsx' : null;
+
+    return {
+      base: base,
+      params: params,
+      credenciais: credenciais,
+      formato: formato,
+      ficha: {
+        nome: arquivo ? (arquivo.charAt(0).toUpperCase() + arquivo.slice(1)).replace(/[-_]+/g, ' ') : host,
+        org: host,
+        dom: 'catalogos',
+        gran: 'catalogo',
+        acesso: 'naoaud',
+        oficial: false,
+        base: base,
+        params: params
+      }
+    };
+  }
+
+  /* =========================================================
+     GUARDA E SINCRONIA COM O CATÁLOGO
+     ========================================================= */
+  const lista = () => ((kb() && AG.KB && AG.KB.fontesUsuario) || []);
+
+  function normalizaFicha(f) {
+    const id = f.id || ('usr-' + AG.slug(f.nome || 'fonte') + '-' + Math.random().toString(36).slice(2, 7));
+    /* O valor de um parâmetro de credencial NUNCA entra no que será gravado. */
+    const params = (f.params || []).map((p) => {
+      const nome = p.n || p.nome || '';
+      const q = { n: nome, req: !!p.req, hint: p.hint || '' };
+      if (CRED_RE.test(nome)) {
+        q.credencial = true; q.v = '';
+        q.hint = q.hint || 'credencial — digitada na hora do uso, nunca guardada';
+      } else {
+        const v = p.v !== undefined ? p.v : p.exemplo;
+        q.v = (v === undefined || v === null) ? '' : String(v);
+      }
+      return q;
+    }).filter((p) => p.n);
+    return {
+      id: id, nome: String(f.nome || 'Fonte sem nome').slice(0, 120),
+      org: String(f.org || '').slice(0, 120),
+      desc: String(f.desc || '').slice(0, 600),
+      dom: f.dom || 'catalogos', gran: f.gran || 'catalogo',
+      acesso: f.acesso || 'naoaud',
+      oficial: f.oficial === true,
+      doUsuario: true,
+      base: String(f.base || ''),
+      params: params,
+      chave: (f.chave || []).map((k) => String(k)).filter(Boolean).slice(0, 20),
+      doc: f.doc || null,
+      formato: f.formato || null,
+      origemDeclarada: f.origemDeclarada || null,   // o que o arquivo diz de si
+      fonteOriginal: f.fonteOriginal || null,       // id ou URL da fonte oficial
+      licenca: f.licenca || null,
+      criadaEm: f.criadaEm || Date.now(),
+      peso: 1
+    };
+  }
+
+  /** Grava (ou atualiza) e devolve a ficha como ficou. */
+  function registrar(ficha) {
+    const f = normalizaFicha(ficha);
+    if (!f.base) return { erro: 'Falta o endereço da fonte.' };
+    AG.KB.fontesUsuario = AG.KB.fontesUsuario || [];
+    const i = AG.KB.fontesUsuario.findIndex((x) => x.id === f.id);
+    if (i >= 0) AG.KB.fontesUsuario[i] = f; else AG.KB.fontesUsuario.push(f);
+    sincronizar();
+    if (kb() && kb().persist) kb().persist();
+    return { ok: true, fonte: f };
+  }
+
+  function remover(id) {
+    AG.KB.fontesUsuario = (AG.KB.fontesUsuario || []).filter((x) => x.id !== id);
+    sincronizar();
+    if (kb() && kb().persist) kb().persist();
+    return true;
+  }
+
+  /**
+   * As fontes do usuário entram no PRÓPRIO array do catálogo.
+   *
+   * Poderia haver uma lista paralela e um `todas()` para juntar as duas, mas
+   * aí cada um dos quinze lugares que leem `AG.fontes.FONTES` — consulta por
+   * identificador, pergunta à fonte, CAPAG, lâmina, painel — precisaria ser
+   * mudado, e o que não fosse mudado passaria a ignorar as fontes do usuário
+   * em silêncio. Um array só é a correção no lugar compartilhado.
+   */
+  function sincronizar() {
+    const cat = (AG.fontes && AG.fontes.FONTES) || null;
+    if (!cat) return;
+    for (let i = cat.length - 1; i >= 0; i--) if (cat[i].doUsuario) cat.splice(i, 1);
+    for (const f of lista()) cat.push(f);
+  }
+
+  AG.fontesUsuario = { lista, registrar, remover, descobrir, lerMetadados, sincronizar, normalizaFicha, CRED_RE };
+})();
 
 /* ==== 45-join.js ==== */
 /* ============================================================
@@ -16806,7 +17161,12 @@ const RECEITAS_ARQUIVO = [
     payload.app = 'agente-analitico-offline';
     AG.download('conhecimento-agente-' + new Date().toISOString().slice(0, 10) + '.json',
       JSON.stringify(payload, null, 2), 'application/json');
-    toast('Base de conhecimento exportada.');
+    /* As fontes que você cadastrou viajam no mesmo arquivo — é o que faz o
+       cadastro valer a pena numa equipe: um cadastra, os outros importam.
+       Valor de credencial não vai (módulo 40, semCredencial). */
+    const nF = ((AG.KB && AG.KB.fontesUsuario) || []).length;
+    toast('Base de conhecimento exportada' +
+      (nF ? ', com ' + nF + (nF > 1 ? ' fontes suas' : ' fonte sua') + ' (sem credenciais).' : '.'));
   }
   function importKBDialog() {
     const inp = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
@@ -16816,8 +17176,15 @@ const RECEITAS_ARQUIVO = [
       if (!f) return;
       try {
         const obj = JSON.parse(await f.text());
+        const antes = ((AG.KB && AG.KB.fontesUsuario) || []).length;
         kb.importKB(obj, 'merge');
-        toast('Conhecimento importado e mesclado.');
+        const dep = ((AG.KB && AG.KB.fontesUsuario) || []).length;
+        /* Fonte importada já está no catálogo (importKB sincroniza); o painel,
+           se estiver aberto, precisa ser avisado — lista na tela que não
+           acompanha o estado é tela que mente. */
+        if (AG.fontesUI && AG.fontesUI.redesenhar) AG.fontesUI.redesenhar();
+        toast('Conhecimento importado e mesclado' +
+          (dep > antes ? ' — ' + (dep - antes) + ' fonte(s) nova(s) no catálogo.' : '.'));
       } catch (e) { toast('Falha ao importar: ' + e.message); }
       inp.remove();
     });
@@ -16859,6 +17226,11 @@ const RECEITAS_ARQUIVO = [
      ========================================================= */
   async function boot() {
     await kb.load();
+    /* As fontes cadastradas pelo usuário vivem no conhecimento e entram no
+       catálogo compartilhado aqui, antes de qualquer tela — quem lê
+       AG.fontes.FONTES depois disso já as vê sem saber que existem duas
+       procedências. */
+    if (AG.fontesUsuario) AG.fontesUsuario.sincronizar();
     renderSources(); renderChips();
 
     const drop = AG.$('#dropzone');
@@ -21904,11 +22276,16 @@ const RECEITAS_ARQUIVO = [
   /* =========================================================
      BUSCA LOCAL NO CATÁLOGO
      ========================================================= */
-  const estado = { q: '', dom: new Set(), acesso: new Set(), gran: new Set(), sel: null };
+  const estado = { q: '', dom: new Set(), acesso: new Set(), gran: new Set(), proc: new Set(), sel: null };
 
   /* As três tabelas de rótulo têm formatos diferentes: DOMINIOS e ACESSOS
      guardam objeto ({rot, cls, curto}), GRANS guarda string solta. Quem lê
      precisa saber disso uma vez só, aqui — e não em cada ponto de uso. */
+  /* O catálogo passou a mudar em tempo de execução — cadastrar ou remover uma
+     fonte muda a lista enquanto a janela está aberta. Quem mexe avisa por
+     aqui; com a janela fechada não há o que redesenhar. */
+  let redesenhaCat = () => {};
+
   const rotDom = (k) => ((F.DOMINIOS || {})[k] || {}).rot || k;
   const rotGran = (k) => (F.GRANS || {})[k] || k;
   const rotulo = (mapa, k) => (typeof mapa[k] === 'string' ? mapa[k] : (mapa[k].rot || mapa[k].curto || k));
@@ -21932,7 +22309,10 @@ const RECEITAS_ARQUIVO = [
     let out = F.FONTES.filter((f) =>
       (!estado.dom.size || estado.dom.has(f.dom)) &&
       (!estado.acesso.size || estado.acesso.has(f.acesso)) &&
-      (!estado.gran.size || estado.gran.has(f.gran)));
+      (!estado.gran.size || estado.gran.has(f.gran)) &&
+      /* Procedência não é campo e sim derivação (`oficial` ausente = oficial),
+         então o filtro pergunta ao catálogo em vez de ler a ficha. */
+      (!estado.proc.size || estado.proc.has(F.procedenciaDe(f))));
     if (termos.length) {
       out = out.map((f) => ({ f, s: pontua(f, termos) })).filter((x) => x.s >= 0)
         .sort((a, b) => b.s - a.s).map((x) => x.f);
@@ -21954,7 +22334,12 @@ const RECEITAS_ARQUIVO = [
     for (const p of (f.params || [])) {
       const v = valores[p.n];
       if (v === null || v === undefined || v === '') continue;
-      if (p.n.indexOf('chave') === 0) continue;             // credencial vai no cabeçalho
+      /* Catálogo: parâmetro "chave*" vai no CABEÇALHO, não na query.
+         Fonte do usuário é outro caso — a credencial dela faz parte da URL
+         e é digitada na hora. Não guardar é a regra; não poder usar seria
+         transformar a regra em recurso faltando, então `credencial` NÃO é
+         pulado aqui: o valor vem de `valores`, que só existe nesta chamada. */
+      if (!p.credencial && p.n.indexOf('chave') === 0) continue;
       const naQuery = new RegExp('([?&]' + escRx(p.n) + '=)[^&]*');
       if (naQuery.test(url)) { url = url.replace(naQuery, '$1' + enc(v)); continue; }
       const alvo = '/' + p.v, alvoCod = '/' + encodeURIComponent(p.v);
@@ -22216,6 +22601,19 @@ const RECEITAS_ARQUIVO = [
         });
       }
 
+      /* O cadastro de fonte nova precisa do JSON em si: é dele que saem
+         `gerado_em`, `fonte` e `licenca` para a ficha. Entregar a leitura a
+         quem pediu evita uma segunda requisição ao mesmo endereço — que o
+         servidor tem todo o direito de responder diferente. */
+      if (cfg.aoLer) {
+        try {
+          cfg.aoLer({
+            json: j, forma: forma, linhas: linhas,
+            status: r.status, ms: Date.now() - t0, bytes: txt.length
+          });
+        } catch (e) { void e; }
+      }
+
       /* O que voltou pode ser a entrada da próxima consulta: achou o CEP pela
          rua, esse CEP serve a outra fonte. Oferecido mesmo quando só se testou,
          porque testar já entregou o valor. */
@@ -22407,6 +22805,7 @@ const RECEITAS_ARQUIVO = [
   function fechar() {
     if (dlgDet) { try { dlgDet.close(); } catch (e) { void e; } dlgDet = null; }
     if (dlg) { try { dlg.close(); } catch (e) { void e; } dlg = null; }
+    redesenhaCat = () => {};
   }
 
   function abrirFontes() {
@@ -22428,6 +22827,7 @@ const RECEITAS_ARQUIVO = [
     const painelRec = el('div', { style: { display: 'none' } });
     const painelFin = el('div', { style: { display: 'none' } });
     const btnCat = el('button', { class: 'pill sel', text: 'Catálogo (' + F.FONTES.length + ' fontes)' });
+    const rotulaCat = () => { btnCat.textContent = 'Catálogo (' + F.FONTES.length + ' fontes)'; };
     const btnRec = el('button', { class: 'pill', text: 'Receitas prontas (' + F.RECEITAS.length + ')' });
     const btnFin = el('button', { class: 'pill', text: '💹 Financeiro (' + (F.RECEITAS_ARQUIVO || []).length + ')' });
     const paineis = [painelCat, painelRec, painelFin], botoes = [btnCat, btnRec, btnFin];
@@ -22486,6 +22886,10 @@ const RECEITAS_ARQUIVO = [
        É o eixo que corta os assuntos: "o que devolve empresa", venha de onde
        vier. GRANS é mapa de string, daí o `rotulo()` que trata os dois casos. */
     linhaFiltro('Devolve', F.GRANS, estado.gran);
+    /* Quarto eixo: quem publicou. Separado do acesso de propósito — um JSON
+       republicado no Vercel responde ao navegador melhor que o portal do
+       órgão, e continua não sendo o órgão. */
+    linhaFiltro('Procedência', F.PROCEDENCIAS, estado.proc);
 
     const contagem = el('div', { class: 'hint', style: { margin: '6px 0' } });
     const btnLimpar = el('button', {
@@ -22495,7 +22899,7 @@ const RECEITAS_ARQUIVO = [
       id: 'fontes-limpar', class: 'btn sm ghost', text: 'Limpar filtros',
       style: { display: 'none', marginLeft: '8px' },
       onclick: () => {
-        estado.dom.clear(); estado.acesso.clear(); estado.gran.clear();
+        estado.dom.clear(); estado.acesso.clear(); estado.gran.clear(); estado.proc.clear();
         estado.q = ''; busca.value = '';
         for (const x of botoesFiltro) x.b.classList.remove('sel');
         desenhaLista();
@@ -22503,13 +22907,22 @@ const RECEITAS_ARQUIVO = [
     });
     const barra = el('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap' } });
     barra.appendChild(contagem); barra.appendChild(btnLimpar);
+    /* Catálogo escrito à mão não escala: cada prefeitura tem TCE estadual,
+       portal próprio e diário municipal. Esperar versão nova do agente para
+       cada fonte nova é o mesmo que não ter a fonte. */
+    barra.appendChild(el('button', {
+      class: 'btn sm primary', text: '+ Adicionar fonte',
+      style: { marginLeft: 'auto' },
+      onclick: () => { if (AG.fonteNovaUI) AG.fonteNovaUI.abrir(); }
+    }));
     const lista = el('div', { class: 'fontes-lista' });
     painelCat.appendChild(barra);
     painelCat.appendChild(lista);
 
     function desenhaLista() {
       const fs = filtradas();
-      const ativos = estado.dom.size + estado.acesso.size + estado.gran.size + (estado.q ? 1 : 0);
+      const ativos = estado.dom.size + estado.acesso.size + estado.gran.size +
+        estado.proc.size + (estado.q ? 1 : 0);
       contagem.textContent = fs.length + ' de ' + F.FONTES.length + ' fontes' +
         (estado.q ? ' para “' + estado.q + '”' : '');
       btnLimpar.style.display = ativos ? '' : 'none';
@@ -22525,6 +22938,7 @@ const RECEITAS_ARQUIVO = [
       for (const f of fs) lista.appendChild(cartaoFonte(f));
     }
     desenhaLista();
+    redesenhaCat = () => { rotulaCat(); desenhaLista(); };
 
     /* --- receitas --- */
     painelRec.appendChild(el('div', {
@@ -22576,10 +22990,22 @@ const RECEITAS_ARQUIVO = [
     return el('span', { class: 'selo selo-' + f.acesso, text: a.rot || f.acesso });
   }
 
+  /* Selo de procedência. Devolve null para fonte oficial: o padrão em 107 de
+     108 cartões não informa nada e consome a atenção de que o selo da exceção
+     precisa. Quem quiser ver a procedência de todas usa o filtro. */
+  function seloProc(f) {
+    const k = F.procedenciaDe(f);
+    if (k === 'oficial') return null;
+    const p = F.PROCEDENCIAS[k];
+    return el('span', { class: 'selo ' + p.cls, text: p.curto, title: p.dica });
+  }
+
   function cartaoFonte(f) {
     const c = el('div', { class: 'fonte-item' });
     const cab = el('div', { class: 'fonte-cab' });
     cab.appendChild(el('div', { class: 'fonte-nome', text: f.nome }));
+    const sp = seloProc(f);
+    if (sp) cab.appendChild(sp);
     cab.appendChild(selo(f));
     c.appendChild(cab);
     /* DOMINIOS guarda objeto ({rot}), GRANS guarda string. Ler `.rot` de uma
@@ -22670,11 +23096,26 @@ const RECEITAS_ARQUIVO = [
     const body = el('div');
     const a = F.ACESSOS[f.acesso] || {};
     // o nome já está no cabeçalho da janela: aqui vale o selo e a ficha técnica
-    body.appendChild(el('div', { class: 'fonte-cab', style: { marginBottom: '4px' } }, [
-      el('div', { class: 'fonte-meta', text: f.org }),   // o resto está na ficha técnica
-      selo(f)
-    ]));
+    const cabDet = el('div', { class: 'fonte-cab', style: { marginBottom: '4px' } }, [
+      el('div', { class: 'fonte-meta', text: f.org })   // o resto está na ficha técnica
+    ]);
+    const spDet = seloProc(f);
+    if (spDet) cabDet.appendChild(spDet);
+    cabDet.appendChild(selo(f));
+    body.appendChild(cabDet);
     body.appendChild(el('div', { class: 'fonte-desc', style: { margin: '10px 0' }, text: f.desc }));
+
+    /* Procedência não oficial é aviso, não rodapé: quem vai usar o número
+       precisa saber ANTES de trazer que a origem é uma e o arquivo é outro. */
+    if (!F.ehOficial(f)) {
+      const k = F.procedenciaDe(f);
+      const orig = f.origemDeclarada
+        ? ' O próprio arquivo declara a origem: <b>' + AG.esc(f.origemDeclarada) + '</b>.' : '';
+      const lic = f.licenca ? ' Licença declarada: <b>' + AG.esc(f.licenca) + '</b>.' : '';
+      body.appendChild(AG.ui.insightNode(AG.insights.ins('warn', '⚠',
+        '<b>' + AG.esc(F.PROCEDENCIAS[k].rot) + '.</b> ' + AG.esc(F.PROCEDENCIAS[k].dica) + orig + lic +
+        ' Use para analisar; para citar, cite a origem e confira o número nela.')));
+    }
 
     /* Atalho para a fonte primária: várias entradas do catálogo são camada de
        apresentação de um dado que existe em API noutro lugar. Dizer isso poupa
@@ -22706,7 +23147,18 @@ const RECEITAS_ARQUIVO = [
       ['Formato', f.formato],
       ['Atualização', f.periodicidade],
       ['Domínio', (F.DOMINIOS[f.dom] || {}).rot || f.dom],
-      ['Acesso', a.rot || f.acesso]
+      ['Acesso', a.rot || f.acesso],
+      /* Para fonte sua, o selo é sempre "Sua fonte" — o agente não auditou
+         nenhuma das duas. Mas o que VOCÊ declarou sobre quem publica fica
+         registrado, porque é informação sua e muda como citar o número. */
+      ['Procedência', (F.PROCEDENCIAS[F.procedenciaDe(f)] || {}).rot +
+        (f.doUsuario
+          ? (f.oficial ? ' · endereço de órgão oficial, segundo você'
+            : ' · republicação de terceiro, segundo você')
+          : '')],
+      ['Origem declarada', f.origemDeclarada],
+      ['Licença', f.licenca],
+      ['Cadastrada em', f.doUsuario && f.criadaEm ? AG.fmtDate(f.criadaEm) : null]
     ].filter((x) => x[1]);
     if (ficha.length) {
       body.appendChild(el('h3', { class: 'sec-tit', text: 'Ficha técnica' }));
@@ -22854,6 +23306,27 @@ const RECEITAS_ARQUIVO = [
     }));
     acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Abrir numa aba', onclick: () => window.open(montarURL(alvo(), valores), '_blank', 'noopener') }));
     if (f.doc) acoes.appendChild(el('button', { class: 'btn sm ghost', text: 'Documentação', onclick: () => window.open(f.doc, '_blank', 'noopener') }));
+    /* Fonte que você cadastrou, você edita e você remove — do mesmo lugar em
+       que ela é consultada. Não há "configurações" à parte: a ficha é o lugar. */
+    if (f.doUsuario) {
+      acoes.appendChild(el('button', {
+        class: 'btn sm ghost', text: 'Editar ficha',
+        onclick: () => {
+          d2.close(); if (dlgDet === d2) dlgDet = null;
+          if (AG.fonteNovaUI) AG.fonteNovaUI.abrir(f);
+        }
+      }));
+      acoes.appendChild(el('button', {
+        class: 'btn sm ghost', text: 'Remover esta fonte',
+        onclick: () => {
+          if (!AG.fontesUsuario) return;
+          AG.fontesUsuario.remover(f.id);
+          AG.toast('Fonte “' + f.nome + '” removida do catálogo.');
+          d2.close(); if (dlgDet === d2) dlgDet = null;
+          redesenhaCat();
+        }
+      }));
+    }
     body.appendChild(acoes);
 
     if (f.acesso !== 'live') {
@@ -22875,12 +23348,23 @@ const RECEITAS_ARQUIVO = [
      e `fechar()` é inofensivo quando não há o que fechar. */
   AG.fontesUI = {
     abrirFontes, montarURL, achatar, extrairLinhas, filtradas, estado, trazer, protege, mascara,
-    detalhe, chamarAvulso: chamar
+    detalhe, chamarAvulso: chamar, selo, seloProc,
+    /* O módulo 101 cadastra e remove fontes; a lista na tela é desenhada aqui.
+       Em vez de ele conhecer os nós do painel, chama este aviso. */
+    redesenhar: () => redesenhaCat()
   };
 
   AG.hooks.push(function () {
     const b = AG.$('#btn-fontes');
     if (b) b.addEventListener('click', abrirFontes);
+    /* O número ficou escrito na mão no shell e envelheceu duas vezes (dizia
+       101 com 107 no catálogo). Agora que o usuário também cadastra fonte,
+       número fixo mentiria por definição. */
+    const h = AG.$('#fontes-hint');
+    if (h) {
+      h.textContent = F.FONTES.length + ' fontes catalogadas. ' +
+        'A busca é local; só há acesso à rede quando você manda buscar uma fonte.';
+    }
   });
 })();
 
@@ -26881,6 +27365,300 @@ const RECEITAS_ARQUIVO = [
   }
 
   AG.capagUI = { alvoDaPergunta, SENTIDO, linhasDaPlanilha, ordenaBases };
+})();
+
+/* ==== 101-render-fonte-nova.js ==== */
+/* ============================================================
+   101 — CADASTRAR UMA FONTE
+
+   A tela do módulo 41. O caminho é um só: colar o endereço, deixar o agente
+   descobrir o que der, testar, conferir e salvar. Formulário de dez campos em
+   branco é trabalho; conferir o que a máquina leu é revisão — e a diferença
+   entre as duas coisas é uma fonte cadastrada ou uma fonte que ficou de fora.
+
+   O que a tela NÃO faz, de propósito:
+
+   · Não promete que a fonte funciona. O botão é "Testar agora", e o resultado
+     — inclusive a recusa por CORS — fica gravado como auditoria sua, com a
+     data. Dizer "fonte cadastrada com sucesso" sobre um endereço nunca
+     chamado seria inventar um selo.
+
+   · Não guarda credencial. Parâmetro com cara de chave entra na ficha vazio e
+     é digitado na hora do uso. O campo aparece travado e explicado — porque
+     "some sem avisar" é pior que "não aceito, e aqui está o motivo".
+   ============================================================ */
+'use strict';
+
+(function () {
+  const el = AG.el;
+  const F = () => AG.fontes;
+  const U = () => AG.fontesUsuario;
+
+  const ins = (nivel, ic, html) => AG.ui.insightNode(AG.insights.ins(nivel, ic, html));
+
+  function campo(rot, controle, dica) {
+    const w = el('div', { class: 'fn-campo' });
+    w.appendChild(el('label', { class: 'fn-rot', text: rot }));
+    w.appendChild(controle);
+    if (dica) w.appendChild(el('div', { class: 'hint', text: dica }));
+    return w;
+  }
+  function seletor(mapa, valor) {
+    const s = el('select', { class: 'inp' });
+    for (const k in mapa) {
+      const m = mapa[k];
+      const rot = typeof m === 'string' ? m : (m.rot || m.curto || k);
+      const o = el('option', { value: k, text: rot });
+      if (k === valor) o.selected = true;
+      s.appendChild(o);
+    }
+    return s;
+  }
+
+  /* =========================================================
+     A JANELA
+     `existente` vem preenchida quando é edição de ficha; vazia, é cadastro.
+     ========================================================= */
+  function abrir(existente) {
+    const editando = !!(existente && existente.doUsuario);
+    const body = el('div', { class: 'fn-wrap' });
+
+    body.appendChild(ins('info', 'ⓘ',
+      'Cole o endereço de onde o dado está publicado — <b>o JSON ou o CSV</b>, não a página que ' +
+      'mostra a tabela. O agente separa a base dos parâmetros, lê a forma da resposta e os ' +
+      'metadados que o próprio arquivo declarar, e devolve esta ficha para você conferir.'));
+    body.appendChild(ins('warn', '⚠',
+      '<b>Duas regras.</b> Chave de API não é guardada: um segredo colado num arquivo que roda na ' +
+      'sua máquina é um segredo vazado — o parâmetro fica em branco e você digita na hora de usar. ' +
+      'E fonte que você cadastra entra marcada como <b>não auditada</b>: o agente não conferiu a ' +
+      'procedência nem compara os números com a origem. O selo diz isso em toda tela onde ela aparecer.'));
+
+    /* --- passo 1: a URL --- */
+    const urlInp = el('input', {
+      class: 'inp', value: (existente && existente.base) || '',
+      placeholder: 'https://exemplo.gov.br/api/dados.json?ano=2026'
+    });
+    const btnDesc = el('button', { class: 'btn sm primary', text: 'Descobrir' });
+    const linhaURL = el('div', { class: 'fn-linha-url' }, [urlInp, btnDesc]);
+    body.appendChild(campo('Endereço da fonte', linhaURL,
+      'Se a URL tiver parâmetros (?ano=2026), eles entram na ficha como campos editáveis.'));
+
+    const erroURL = el('div', { class: 'hint', style: { color: 'var(--critical)', display: 'none' } });
+    body.appendChild(erroURL);
+
+    /* --- a ficha, escondida até haver o que conferir --- */
+    const ficha = el('div', { style: { display: editando ? '' : 'none' } });
+    body.appendChild(ficha);
+    const out = el('div');
+
+    /* estado do rascunho */
+    let rascunho = editando ? Object.assign({}, existente) : null;
+
+    const inpNome = el('input', { class: 'inp' });
+    const inpOrg = el('input', { class: 'inp' });
+    const inpDesc = el('textarea', { class: 'inp', rows: '2' });
+    const selDom = seletor(F().DOMINIOS, 'catalogos');
+    const selGran = seletor(F().GRANS, 'catalogo');
+    const selAcesso = seletor(F().ACESSOS, 'naoaud');
+    const selQuem = el('select', { class: 'inp' }, [
+      el('option', { value: 'nao', text: 'Terceiro republicou o dado (não oficial)' }),
+      el('option', { value: 'sim', text: 'É o endereço do próprio órgão (oficial)' })
+    ]);
+    const inpOrigem = el('input', { class: 'inp', placeholder: 'ex.: TSE (dados abertos) + IBGE' });
+    const inpLic = el('input', { class: 'inp', placeholder: 'ex.: CC BY — cite as fontes' });
+    const inpDoc = el('input', { class: 'inp', placeholder: 'https://… (opcional)' });
+    const inpChave = el('input', { class: 'inp', placeholder: 'prefeito, partido, eleição' });
+
+    const caixaParams = el('div', { class: 'fn-params' });
+    const avisoCred = el('div', { style: { display: 'none' } });
+
+    const grid = el('div', { class: 'fn-grid' });
+    grid.appendChild(campo('Nome da fonte', inpNome, 'É por este nome que ela aparece na busca.'));
+    grid.appendChild(campo('Publicada por', inpOrg, 'Quem mantém este endereço.'));
+    grid.appendChild(campo('Assunto', selDom));
+    grid.appendChild(campo('Devolve', selGran, 'A granularidade de cada linha: município, UF, empresa…'));
+    grid.appendChild(campo('Quem publica', selQuem,
+      'Fica registrado na ficha. O selo da lista continua “Sua fonte” nos dois casos — o agente não auditou nenhum dos dois.'));
+    grid.appendChild(campo('Acesso', selAcesso, 'Deixe em “Sem auditoria” até o teste responder.'));
+    grid.appendChild(campo('Origem do dado', inpOrigem, 'De onde o dado vem, antes de ser republicado aqui.'));
+    grid.appendChild(campo('Licença', inpLic));
+    grid.appendChild(campo('Documentação', inpDoc));
+    grid.appendChild(campo('Palavras de busca', inpChave, 'Separadas por vírgula. É o que faz a fonte ser encontrada.'));
+    ficha.appendChild(grid);
+    ficha.appendChild(campo('O que esta fonte tem', inpDesc,
+      'Uma frase que responda “serve para quê”. É o que aparece no cartão.'));
+    ficha.appendChild(el('h3', { class: 'sec-tit', text: 'Parâmetros' }));
+    ficha.appendChild(avisoCred);
+    ficha.appendChild(caixaParams);
+
+    /* --- parâmetros: um por linha, credencial travada e explicada --- */
+    let params = [];
+    function desenhaParams() {
+      caixaParams.innerHTML = '';
+      if (!params.length) {
+        caixaParams.appendChild(el('div', { class: 'hint', text: 'Nenhum parâmetro — o endereço é chamado como está.' }));
+      }
+      params.forEach((p, i) => {
+        const cred = U().CRED_RE.test(p.n || '');
+        const linha = el('div', { class: 'fn-param' });
+        linha.appendChild(el('code', { class: 'fn-param-n', text: p.n }));
+        const v = el('input', {
+          class: 'inp', value: cred ? '' : (p.v === undefined || p.v === null ? '' : String(p.v)),
+          placeholder: cred ? 'você digita na hora de usar' : 'valor de exemplo'
+        });
+        if (cred) { v.disabled = true; v.title = 'Credencial não é guardada.'; }
+        else v.addEventListener('input', () => { p.v = v.value; });
+        linha.appendChild(v);
+        if (cred) linha.appendChild(el('span', { class: 'selo selo-key', text: '🔒 credencial' }));
+        linha.appendChild(el('button', {
+          class: 'btn sm ghost', text: 'Remover',
+          onclick: () => { params.splice(i, 1); desenhaParams(); }
+        }));
+        caixaParams.appendChild(linha);
+      });
+      const quantas = params.filter((p) => U().CRED_RE.test(p.n || '')).length;
+      avisoCred.innerHTML = '';
+      avisoCred.style.display = quantas ? '' : 'none';
+      if (quantas) {
+        avisoCred.appendChild(ins('warn', '🔒',
+          'Encontrei <b>' + quantas + '</b> parâmetro(s) com cara de credencial. O <b>nome</b> fica na ficha; ' +
+          'o <b>valor</b> não é guardado em lugar nenhum — nem aqui, nem no arquivo de conhecimento exportado. ' +
+          'Você digita na hora de chamar a fonte.'));
+      }
+    }
+
+    /* --- preenche a ficha a partir de um rascunho --- */
+    function aplica(r) {
+      /* O id nasce aqui, no rascunho, e não na gravação. O "Testar agora"
+         grava a auditoria sob o id da fonte; se cada clique sorteasse um id
+         novo, o teste ficaria registrado para uma fonte que nunca existiu e
+         a ficha salva apareceria sem auditoria nenhuma. */
+      if (!r.id) r.id = U().normalizaFicha(r).id;
+      rascunho = r;
+      inpNome.value = r.nome || '';
+      inpOrg.value = r.org || '';
+      inpDesc.value = r.desc || '';
+      selDom.value = r.dom || 'catalogos';
+      selGran.value = r.gran || 'catalogo';
+      selAcesso.value = r.acesso || 'naoaud';
+      selQuem.value = r.oficial === true ? 'sim' : 'nao';
+      inpOrigem.value = r.origemDeclarada || '';
+      inpLic.value = r.licenca || '';
+      inpDoc.value = r.doc || '';
+      inpChave.value = (r.chave || []).join(', ');
+      params = (r.params || []).map((p) => Object.assign({}, p));
+      desenhaParams();
+      ficha.style.display = '';
+    }
+    if (editando) aplica(rascunho);
+
+    /* --- descobrir --- */
+    btnDesc.addEventListener('click', () => {
+      const r = U().descobrir(urlInp.value);
+      erroURL.style.display = r.erro ? '' : 'none';
+      if (r.erro) { erroURL.textContent = r.erro; return; }
+      const base = Object.assign({}, rascunho || {}, r.ficha);
+      /* Edição de ficha só reaproveita o que a URL nova não diz: trocar o
+         endereço não deve apagar a descrição que você escreveu. */
+      if (editando) {
+        base.nome = rascunho.nome || base.nome;
+        base.org = rascunho.org || base.org;
+        base.desc = rascunho.desc;
+        base.id = rascunho.id;
+        base.oficial = rascunho.oficial;
+      }
+      aplica(base);
+      out.innerHTML = '';
+      AG.toast('Endereço separado. Confira a ficha e, de preferência, teste antes de salvar.');
+    });
+
+    /* --- montar a ficha a partir da tela --- */
+    function daTela() {
+      const u = String(urlInp.value || '').trim();
+      const d = U().descobrir(u);
+      return {
+        id: rascunho && rascunho.id,
+        nome: inpNome.value.trim(),
+        org: inpOrg.value.trim(),
+        desc: inpDesc.value.trim(),
+        dom: selDom.value, gran: selGran.value, acesso: selAcesso.value,
+        oficial: selQuem.value === 'sim',
+        base: d.erro ? (rascunho && rascunho.base) || '' : d.base,
+        params: params,
+        origemDeclarada: inpOrigem.value.trim() || null,
+        licenca: inpLic.value.trim() || null,
+        doc: inpDoc.value.trim() || null,
+        chave: inpChave.value.split(',').map((s) => s.trim()).filter(Boolean),
+        criadaEm: (rascunho && rascunho.criadaEm) || Date.now()
+      };
+    }
+
+    /* --- testar: a auditoria é o teste, e ele fica gravado --- */
+    const btnTeste = el('button', { class: 'btn sm', text: 'Testar agora' });
+    btnTeste.addEventListener('click', () => {
+      const f = U().normalizaFicha(daTela());
+      if (!f.base) { AG.toast('Falta o endereço.'); return; }
+      /* `descobrir` tirou a query da base, então os valores precisam voltar
+         aqui — testar sem os parâmetros seria testar outro endereço. A
+         credencial fica de fora: não há valor a mandar, e é por isso que o
+         teste de uma fonte com chave responde 401 em vez de mentir. */
+      const valores = {};
+      for (const p of (f.params || [])) if (!p.credencial) valores[p.n] = p.v;
+      const url = AG.fontesUI.montarURL(f, valores);
+      AG.fontesUI.chamarAvulso(f, url, out, btnTeste, {
+        ingerir: false, nome: f.nome,
+        aoLer: (r) => {
+          /* O que o arquivo declara sobre si vale mais que o que a ficha
+             afirma: a ficha envelhece parada, o arquivo se atualiza junto
+             com o dado. Então o lido preenche o que está em branco. */
+          const m = U().lerMetadados(r.json);
+          if (m.fonte && !inpOrigem.value) inpOrigem.value = m.fonte;
+          if (m.licenca && !inpLic.value) inpLic.value = m.licenca;
+          const partes = [];
+          if (m.gerado) partes.push('gerado em <b>' + AG.esc(m.gerado) + '</b>');
+          if (m.total !== null) partes.push('declara <b>' + AG.fmtNum(m.total) + '</b> registros');
+          if (r.linhas && r.linhas.length) partes.push('vieram <b>' + AG.fmtNum(r.linhas.length) + '</b> linhas');
+          if (m.fonte) partes.push('origem declarada: <b>' + AG.esc(m.fonte) + '</b>');
+          if (m.licenca) partes.push('licença: <b>' + AG.esc(m.licenca) + '</b>');
+          if (partes.length) {
+            out.insertBefore(ins('good', '✓',
+              '<b>O arquivo diz de si mesmo:</b> ' + partes.join(' · ') + '.' +
+              (m.total !== null && r.linhas && r.linhas.length && m.total !== r.linhas.length
+                ? ' <b>Atenção:</b> o total declarado não é o número de linhas lidas — ' +
+                  'pode haver paginação, ou o arquivo pode estar contando outra coisa.' : '')), out.firstChild);
+          }
+          /* Respondeu ao navegador: o acesso deixa de ser desconhecido. */
+          if (r.linhas && r.linhas.length && selAcesso.value === 'naoaud') selAcesso.value = 'live';
+        }
+      });
+    });
+
+    const btnSalvar = el('button', { class: 'btn primary', text: editando ? 'Salvar alterações' : 'Salvar no catálogo' });
+    btnSalvar.addEventListener('click', () => {
+      const f = daTela();
+      if (!f.base) { AG.toast('Falta o endereço da fonte.'); return; }
+      if (!f.nome) { AG.toast('Dê um nome à fonte — é por ele que você vai achá-la.'); return; }
+      if (!f.desc) f.desc = 'Fonte cadastrada por você. Sem descrição.';
+      const r = U().registrar(f);
+      if (r.erro) { AG.toast(r.erro); return; }
+      dlg.close();
+      AG.toast('“' + r.fonte.nome + '” entrou no catálogo com o selo “Sua fonte”.');
+      if (AG.fontesUI.redesenhar) AG.fontesUI.redesenhar();
+      AG.fontesUI.detalhe(r.fonte);
+    });
+
+    const acoes = el('div', { class: 'btn-row', style: { marginTop: '10px' } }, [btnTeste]);
+    ficha.appendChild(acoes);
+    ficha.appendChild(out);
+
+    const dlg = AG.modal(editando ? 'Editar ficha · ' + existente.nome : 'Adicionar uma fonte', body, [
+      btnSalvar,
+      el('button', { class: 'btn', text: 'Cancelar', onclick: () => dlg.close() })
+    ]);
+    return dlg;
+  }
+
+  AG.fonteNovaUI = { abrir };
 })();
 
 </script>
